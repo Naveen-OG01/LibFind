@@ -1,0 +1,1 @@
+"""LibFind core package."""
