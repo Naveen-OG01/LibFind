@@ -3,18 +3,35 @@ import streamlit as st
 from sqlite3 import IntegrityError
 
 from libfind import db
-from ui.auth import login, logout
 from libfind.cloudinary_config import upload_cover
 
 
 def render():
-    if not login():
+    # Hardcoded login - no auth.py needed
+    if "admin_logged_in" not in st.session_state:
+        st.session_state.admin_logged_in = False
+
+    if not st.session_state.admin_logged_in:
+        st.title("🔐 Admin Login")
+        with st.form("login_form"):
+            username = st.text_input("Username")
+            password = st.text_input("Password", type="password")
+            submitted = st.form_submit_button("Login")
+
+        if submitted:
+            if username == "admin" and password == "admin123":
+                st.session_state.admin_logged_in = True
+                st.rerun()
+            else:
+                st.error("Invalid credentials")
         return
 
-    logout()
+    # Logout button
+    if st.sidebar.button("Logout"):
+        st.session_state.admin_logged_in = False
+        st.rerun()
 
     st.title("🛠 Admin / Library Interface")
-
     col1, col2 = st.columns([4, 1])
     col1.success("Logged in as library administrator")
 
@@ -52,7 +69,7 @@ def _add_book_tab():
 
         col7, col8 = st.columns(2)
         total_copies = col7.number_input("Total copies", min_value=1, value=1, step=1)
-        available_copies = col8.number_input("Available copies", min_value=0, value=total_copies, step=1)
+        available_copies = col8.number_input("Available copies", min_value=0, value=1, step=1)
 
         col9, col10 = st.columns(2)
         shelf = col9.text_input("Shelf", placeholder="CS-1")
@@ -91,11 +108,7 @@ def _edit_delete_book_tab():
         st.info("No books in the catalogue yet.")
         return
 
-    options = {
-        f"#{book['id']} — {book['title']} ({book['author']})": book["id"]
-        for book in books
-    }
-
+    options = {f"#{book['id']} — {book['title']} ({book['author']})": book["id"] for book in books}
     label = st.selectbox("Select a book", list(options.keys()))
     book_id = options[label]
     book = db.get_book(book_id)
@@ -105,22 +118,14 @@ def _edit_delete_book_tab():
         return
 
     categories = db.category_names()
-    default_cat_idx = 0
-    if book["category_name"] in categories:
-        default_cat_idx = categories.index(book["category_name"])
+    default_cat_idx = categories.index(book["category_name"]) if book["category_name"] in categories else 0
 
-    # BOOK COVER - Outside the form
     st.subheader("📚 Book Cover Image")
     if book.get("cover_image"):
         st.image(book["cover_image"], width=150, caption="Current cover")
-    
-    uploaded_cover = st.file_uploader(
-        "Upload new cover image",
-        type=["png", "jpg", "jpeg"],
-        key="cover_upload"
-    )
 
-    # FORM - No file uploader here
+    uploaded_cover = st.file_uploader("Upload new cover image", type=["png", "jpg", "jpeg"], key="cover_upload")
+
     with st.form("edit_book_form"):
         st.subheader("Update book details")
 
@@ -146,7 +151,6 @@ def _edit_delete_book_tab():
 
         submitted = st.form_submit_button("Save changes", type="primary", use_container_width=True)
 
-    # PROCESS - Outside the form
     if submitted:
         if not title.strip() or not author.strip():
             st.error("Title and author are required.")
@@ -156,7 +160,7 @@ def _edit_delete_book_tab():
             if uploaded_cover:
                 cover_url = upload_cover(uploaded_cover.read(), book_id)
                 db.update_book_cover(book_id, cover_url)
-            
+
             db.update_book(
                 book_id,
                 title=title,
@@ -174,7 +178,6 @@ def _edit_delete_book_tab():
             st.rerun()
 
     st.divider()
-
     if st.button("🗑 Delete selected book", use_container_width=True):
         db.delete_book(book_id)
         st.success("Book deleted.")
@@ -182,33 +185,23 @@ def _edit_delete_book_tab():
 
 
 def _categories_tab():
-    st.markdown(
-        "A category that still contains books cannot be deleted. "
-        "First edit those books to a different category."
-    )
+    st.markdown("A category that still contains books cannot be deleted.")
 
     with st.form("add_category_form"):
         col1, col2 = st.columns([3, 1])
         name = col1.text_input("New category name")
         submitted = col2.form_submit_button("Add", use_container_width=True)
 
-    if submitted:
-        if name.strip():
-            db.add_category(name)
-            st.success(f"Category '{name.strip()}' added.")
-            st.rerun()
-        else:
-            st.warning("Enter a category name.")
+    if submitted and name.strip():
+        db.add_category(name)
+        st.success(f"Category '{name.strip()}' added.")
+        st.rerun()
 
     st.divider()
-
     categories = db.list_categories()
+
     if categories:
-        st.dataframe(
-            [{"Category": c["name"], "Books": c["book_count"]} for c in categories],
-            use_container_width=True,
-            hide_index=True,
-        )
+        st.dataframe([{"Category": c["name"], "Books": c["book_count"]} for c in categories], use_container_width=True, hide_index=True)
 
         empty = [c["name"] for c in categories if c["book_count"] == 0]
         if empty:
@@ -220,4 +213,3 @@ def _categories_tab():
                     st.rerun()
                 except ValueError as exc:
                     st.error(str(exc))
-
