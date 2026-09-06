@@ -27,11 +27,12 @@ def main():
     st.sidebar.title("📚 LibFind")
     st.sidebar.caption("Search. Locate. Read.")
     st.sidebar.caption("Library / Education Technology Mini Project")
-    st.tabs(["Search", "Admin", "Analytics", "Borrowing"])
+    
 
     page = st.sidebar.radio(
         "Navigate",
-        ["🔎 Student Search", "🛠 Admin Interface", "📊 Library Analytics"],
+        ["🔎 Student Search", "🛠 Admin Interface", "📊 Library Analytics","Book Borrowing"],
+
     )
 
     st.sidebar.divider()
@@ -39,6 +40,19 @@ def main():
         "Search by **title**, **author**, **ISBN**, or **category**. "
         "Get copy availability and shelf/rack location instantly."
     )
+
+    if page == "Student Search":
+        from ui.student import student_page
+        student_page()
+    elif page == "Admin Interface":
+         from ui.admin import admin_page
+         admin_page()
+    elif page == "Library Analytics":
+        from ui.analytics_page import analytics_page
+        analytics_page()
+    elif page == "Book Borrowing":
+        from ui.borrow import borrow_page
+        borrow_page()
 
     if page.startswith("🔎"):
         student.render()
