@@ -9,7 +9,23 @@ DB_PATH = DATA_DIR / "libfind.db"
 
 SCHEMA = """
     CREATE TABLE IF NOT EXISTS books (
-        -- your existing books table definition
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        title TEXT NOT NULL,
+        author TEXT NOT NULL,
+        isbn TEXT,
+        category_name TEXT,
+        total_copies INTEGER DEFAULT 1,
+        available_copies INTEGER DEFAULT 1,
+        shelf TEXT,
+        rack TEXT,
+        description TEXT,
+        publisher TEXT,
+        publication_year INTEGER
+    );
+
+    CREATE TABLE IF NOT EXISTS categories (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT UNIQUE NOT NULL
     );
 
     CREATE TABLE IF NOT EXISTS students (
@@ -33,8 +49,13 @@ SCHEMA = """
         FOREIGN KEY (book_id) REFERENCES books(id)
     );
 """
-     
 
+BOOK_SELECT = """
+    SELECT b.id, b.title, b.author, b.isbn, b.category_name,
+           b.total_copies, b.available_copies, b.shelf, b.rack,
+           b.description, b.publisher, b.publication_year
+    FROM books b
+"""
 
 
 def get_connection():
@@ -50,32 +71,6 @@ def init_db():
         conn.executescript(SCHEMA)
         conn.commit()
 
-   
-    cur.execute("""
-                CREATE TABLE IF NOT EXISTS students (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT NOT NULL,
-                email TEXT UNIQUE NOT NULL,
-                phone TEXT,
-                roll_number TEXT UNIQUE NOT NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
-
-    cur.execute("""
-            CREATE TABLE IF NOT EXISTS borrows (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                student_id INTEGER NOT NULL,
-                book_id INTEGER NOT NULL,
-                borrow_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                due_date TIMESTAMP,
-                return_date TIMESTAMP,
-                status TEXT DEFAULT 'borrowed',
-                FOREIGN KEY (student_id) REFERENCES students(id),
-                FOREIGN KEY (book_id) REFERENCES books(id)
-            )
-        """)
-    conn.commit()
 
 def count_books():
     with closing(get_connection()) as conn:
@@ -92,39 +87,6 @@ def list_categories():
     """
     with closing(get_connection()) as conn:
         return [dict(r) for r in conn.execute(sql).fetchall()]
-
-def init_borrowing_tables():
-    conn = get_connection()
-    cur = conn.cursor()
-    
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS students (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL,
-            email TEXT UNIQUE NOT NULL,
-            phone TEXT,
-            roll_number TEXT UNIQUE NOT NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    """)
-    
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS borrows (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            student_id INTEGER NOT NULL,
-            book_id INTEGER NOT NULL,
-            borrow_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            due_date TIMESTAMP,
-            return_date TIMESTAMP,
-            status TEXT DEFAULT 'borrowed',
-            FOREIGN KEY (student_id) REFERENCES students(id),
-            FOREIGN KEY (book_id) REFERENCES books(id)
-        )
-    """)
-    
-    conn.commit()
-    conn.close()
-
 
 
 def category_names():
@@ -308,7 +270,6 @@ def update_book(book_id, category_name=None, **fields):
             values,
         )
 
-        # Safety net: never allow available > total.
         conn.execute(
             """
             UPDATE books
