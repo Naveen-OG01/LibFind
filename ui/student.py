@@ -110,12 +110,28 @@ def _book_card(book):
     col1, col2 = st.columns([1, 3])
     
     with col1:
+        # Show book cover or placeholder
         if book.get("cover_image"):
             st.image(book["cover_image"], width=120)
         else:
-            st.image("https://via.placeholder.com/120x180?text=No+Cover", width=120)
+            st.image(
+                "https://via.placeholder.com/120x180?text=No+Cover",
+                width=120
+            )
     
     with col2:
-        st.write(f"**{book['title']}**")
-        st.write(f"by {book['author']}")
-        # ... rest of your existing card code
+        st.markdown(f"**{book['title']}**")
+        st.caption(f"by {book['author']}")
+        
+        if book.get("category_name"):
+            st.caption(f"📂 {book['category_name']}")
+        
+        # Availability badge
+        if book["available_copies"] > 0:
+            st.success(f"✅ Available ({book['available_copies']} copies)")
+        else:
+            st.error("❌ Checked out")
+        
+        # Location
+        if book.get("shelf") or book.get("rack"):
+            st.caption(f"📍 Shelf: {book.get('shelf', 'N/A')} | Rack: {book.get('rack', 'N/A')}")
