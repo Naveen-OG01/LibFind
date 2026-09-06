@@ -46,7 +46,109 @@ def render():
         _add_book_tab()
 
     with tab_edit:
-        _edit_delete_book_tab()
+         def _edit_delete_book_tab():
+          books = db.get_all_books()
+
+         if not books:
+           st.info("No books in the catalogue yet.")
+           return
+
+         options = {
+            f"#{book['id']} — {book['title']} ({book['author']})": book["id"]
+            for book in books
+    }
+
+    label = st.selectbox("Select a book", list(options.keys()))
+    book_id = options[label]
+    book = db.get_book(book_id)
+
+    if not book:
+        st.warning("Book not found.")
+        return
+
+    categories = db.category_names()
+    default_cat_idx = 0
+    if book["category_name"] in categories:
+        default_cat_idx = categories.index(book["category_name"])
+
+    # BOOK COVER - Outside the form
+    st.subheader("📚 Book Cover Image")
+    if book.get("cover_image"):
+        st.image(book["cover_image"], width=150, caption="Current cover")
+    
+    uploaded_cover = st.file_uploader(
+        "Upload new cover image",
+        type=["png", "jpg", "jpeg"],
+        key="cover_upload"
+    )
+
+    # FORM - No file uploader here
+    with st.form("edit_book_form"):
+        st.subheader("Update book details")
+
+        col1, col2 = st.columns(2)
+        title = col1.text_input("Title *", value=book["title"])
+        author = col2.text_input("Author *", value=book["author"])
+
+        col3, col4 = st.columns(2)
+        isbn = col3.text_input("ISBN", value=book["isbn"] or "")
+        category = col4.selectbox("Category", categories, index=default_cat_idx)
+
+        col5, col6 = st.columns(2)
+        publisher = col5.text_input("Publisher", value=book["publisher"] or "")
+        year = col6.number_input(
+            "Publication year",
+            min_value=0,
+            max_value=2100,
+            value=book["publication_year"] or 2024,
+            step=1,
+        )
+
+        col7, col8 = st.columns(2)
+        total_copies = col7.number_input("Total copies", min_value=1, value=int(book["total_copies"]), step=1)
+        available_copies = col8.number_input("Available copies", min_value=0, value=int(book["available_copies"]), step=1)
+
+        col9, col10 = st.columns(2)
+        shelf = col9.text_input("Shelf", value=book["shelf"] or "")
+        rack = col10.text_input("Rack", value=book["rack"] or "")
+
+        submitted = st.form_submit_button("Save changes", type="primary", use_container_width=True)
+
+    # PROCESS - Outside the form
+    if submitted:
+        if not title.strip() or not author.strip():
+            st.error("Title and author are required.")
+        elif available_copies > total_copies:
+            st.error("Available copies cannot exceed total copies.")
+        else:
+            # Upload cover to Cloudinary if provided
+            if uploaded_cover:
+                cover_url = upload_cover(uploaded_cover.read(), book_id)
+                db.update_book_cover(book_id, cover_url)
+            
+            db.update_book(
+                book_id,
+                title=title,
+                author=author,
+                isbn=isbn,
+                category_name=category,
+                publisher=publisher,
+                publication_year=year,
+                total_copies=total_copies,
+                available_copies=available_copies,
+                shelf=shelf,
+                rack=rack,
+            )
+            st.success("Book updated!")
+            st.rerun()
+
+    st.divider()
+
+    if st.button("🗑 Delete selected book", use_container_width=True):
+        db.delete_book(book_id)
+        st.success("Book deleted.")
+        st.rerun()
+
 
     with tab_cat:
         _categories_tab()
@@ -150,7 +252,7 @@ def _add_book_tab():
             st.error(f"Could not add book: {exc}")
 
 
-def _edit_delete_book_tab():
+def __delete_book_tab():
     books = db.get_all_books()
 
     if not books:
