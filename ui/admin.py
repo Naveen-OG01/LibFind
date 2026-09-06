@@ -3,25 +3,6 @@ from libfind import db
 from libfind.cloudinary_config import upload_cover
 
 def render():
-    if "logged_in" not in st.session_state:
-        st.session_state.logged_in = False
-
-    if not st.session_state.logged_in:
-        st.title("Admin Login")
-        u = st.text_input("Username")
-        p = st.text_input("Password", type="password")
-        if st.button("Login"):
-            if u == "admin" and p == "admin123":
-                st.session_state.logged_in = True
-                st.rerun()
-            else:
-                st.error("Wrong username or password")
-        return
-
-    if st.sidebar.button("Logout"):
-        st.session_state.logged_in = False
-        st.rerun()
-
     st.title("Admin Interface")
     tab1, tab2, tab3 = st.tabs(["Add Book", "Edit Book", "Categories"])
     with tab1:
