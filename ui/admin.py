@@ -3,6 +3,16 @@ import streamlit as st
 from sqlite3 import IntegrityError
 
 from libfind import db
+from ui.auth import login, logout
+
+def admin_page():
+    if not login():
+        return  # Don't show admin page if not logged in
+    
+    logout()  # Show logout button in sidebar
+    
+    # ... rest of your existing admin page code ...
+
 
 
 def render():
@@ -283,3 +293,4 @@ def _categories_tab():
                     st.error(str(exc))
         else:
             st.caption("No empty categories available to delete.")
+
