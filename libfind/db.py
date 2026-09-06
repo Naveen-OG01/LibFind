@@ -14,21 +14,21 @@ SCHEMA = """
     );
 
     CREATE TABLE IF NOT EXISTS books (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        title TEXT NOT NULL,
-        author TEXT NOT NULL,
-        isbn TEXT,
-        category_id INTEGER,
-        publisher TEXT DEFAULT '',
-        publication_year INTEGER,
-        total_copies INTEGER DEFAULT 1,
-        available_copies INTEGER DEFAULT 1,
-        shelf TEXT DEFAULT '',
-        rack TEXT DEFAULT '',
-        description TEXT DEFAULT '',
-        cover_image TEXT,
-        FOREIGN KEY (category_id) REFERENCES categories(id)
-    );
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL,
+    author TEXT NOT NULL,
+    isbn TEXT,
+    category_id INTEGER,
+    publisher TEXT DEFAULT '',
+    publication_year INTEGER,
+    total_copies INTEGER DEFAULT 1,
+    available_copies INTEGER DEFAULT 1,
+    shelf TEXT DEFAULT '',
+    rack TEXT DEFAULT '',
+    description TEXT DEFAULT '',
+    cover_image TEXT,
+    FOREIGN KEY (category_id) REFERENCES categories(id)
+);
 
     CREATE TABLE IF NOT EXISTS students (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -75,6 +75,10 @@ def init_db():
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     with closing(get_connection()) as conn:
         conn.executescript(SCHEMA)
+        try:
+            conn.execute("ALTER TABLE books ADD COLUMN cover_image TEXT")
+        except sqlite3.OperationalError:
+            pass
         conn.commit()
 
 
