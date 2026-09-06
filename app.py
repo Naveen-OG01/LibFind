@@ -1,8 +1,8 @@
 import streamlit as st
 from libfind import db, seed
 from ui import student, admin, analytics_page
-from libfind.seed import seed_data
-seed_data()
+from libfind.seed import seed_if_empty
+
 
 
 st.set_page_config(
