@@ -8,43 +8,10 @@ DATA_DIR = BASE_DIR / "data"
 DB_PATH = DATA_DIR / "libfind.db"
 
 SCHEMA = """
-CREATE TABLE IF NOT EXISTS categories (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL UNIQUE
-);
-
-CREATE TABLE IF NOT EXISTS books (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    title TEXT NOT NULL,
-    author TEXT NOT NULL,
-    isbn TEXT UNIQUE,
-    category_id INTEGER NOT NULL,
-    publisher TEXT DEFAULT '',
-    publication_year INTEGER,
-    total_copies INTEGER DEFAULT 1,
-    available_copies INTEGER DEFAULT 1,
-    shelf TEXT DEFAULT '',
-    rack TEXT DEFAULT '',
-    description TEXT DEFAULT '',
-    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE RESTRICT
-);
-
-CREATE INDEX IF NOT EXISTS idx_books_title ON books(title);
-CREATE INDEX IF NOT EXISTS idx_books_author ON books(author);
-CREATE INDEX IF NOT EXISTS idx_books_isbn ON books(isbn);
-CREATE INDEX IF NOT EXISTS idx_books_category ON books(category_id);
-"""
-
-BOOK_SELECT = """
-SELECT b.*, c.name AS category_name
-FROM books b
-JOIN categories c ON c.id = b.category_id
-
-CREATE TABLE IF NOT EXISTS books (
-        ...
+    CREATE TABLE IF NOT EXISTS books (
+        -- your existing books table definition
     );
-    
+
     CREATE TABLE IF NOT EXISTS students (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT NOT NULL,
@@ -53,7 +20,7 @@ CREATE TABLE IF NOT EXISTS books (
         roll_number TEXT UNIQUE NOT NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
-    
+
     CREATE TABLE IF NOT EXISTS borrows (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         student_id INTEGER NOT NULL,
@@ -65,9 +32,9 @@ CREATE TABLE IF NOT EXISTS books (
         FOREIGN KEY (student_id) REFERENCES students(id),
         FOREIGN KEY (book_id) REFERENCES books(id)
     );
-
-
 """
+     
+
 
 
 def get_connection():
@@ -80,8 +47,9 @@ def get_connection():
 def init_db():
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     with closing(get_connection()) as conn:
-     conn.executescript(SCHEMA)
-    cur = conn.cursor()
+        conn.executescript(SCHEMA)
+        conn.commit()
+
    
     cur.execute("""
                 CREATE TABLE IF NOT EXISTS students (
