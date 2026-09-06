@@ -86,26 +86,7 @@ def render():
         st.caption("No additional similar titles available right now.")
 
 
-def _book_card(book):
-    status = "✅ Available" if book["available_copies"] > 0 else "❌ Unavailable"
 
-    with st.container(border=True):
-        col_title, col_status = st.columns([4, 1])
-        col_title.markdown(
-            f"**{book['title']}**  \n"
-            f"*{book['author']}* — {book['category_name']}"
-        )
-        col_status.markdown(f"### {status}")
-
-        c1, c2, c3, c4 = st.columns(4)
-        c1.markdown(
-            f"**Copies**  \n{book['available_copies']} / {book['total_copies']} available"
-        )
-        c2.markdown(f"**Shelf**  \n{book.get('shelf') or '—'}")
-        c3.markdown(f"**Rack**  \n{book.get('rack') or '—'}")
-        c4.markdown(
-            f"**ISBN / Year**  \n{book.get('isbn') or '—'} ({book.get('publication_year') or '—'})"
-        )
 def _book_card(book):
     col1, col2 = st.columns([1, 3])
     
@@ -114,10 +95,8 @@ def _book_card(book):
         if book.get("cover_image"):
             st.image(book["cover_image"], width=120)
         else:
-            st.image(
-                "https://via.placeholder.com/120x180?text=No+Cover",
-                width=120
-            )
+            st.caption("📚 No cover available")
+
     
     with col2:
         st.markdown(f"**{book['title']}**")
