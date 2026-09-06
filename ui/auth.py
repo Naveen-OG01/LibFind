@@ -1,5 +1,6 @@
 import streamlit as st
 
+
 # Default admin credentials (change these!)
 ADMIN_USERNAME = "admin"
 ADMIN_PASSWORD = "admin123"
