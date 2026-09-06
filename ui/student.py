@@ -107,12 +107,15 @@ def _book_card(book):
             f"**ISBN / Year**  \n{book.get('isbn') or '—'} ({book.get('publication_year') or '—'})"
         )
 def _book_card(book):
-    # Show cover if exists
-    if book.get("cover_image"):
-        cover_path = Path(book["cover_image"])
-        if cover_path.exists():
-            st.image(str(cover_path), width=150)
+    col1, col2 = st.columns([1, 3])
     
-    st.write(f"**{book['title']}**")
-    st.write(f"by {book['author']}")
-    # ... rest of card
+    with col1:
+        if book.get("cover_image"):
+            st.image(book["cover_image"], width=120)
+        else:
+            st.image("https://via.placeholder.com/120x180?text=No+Cover", width=120)
+    
+    with col2:
+        st.write(f"**{book['title']}**")
+        st.write(f"by {book['author']}")
+        # ... rest of your existing card code

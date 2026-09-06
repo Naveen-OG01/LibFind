@@ -6,6 +6,9 @@ from libfind import db
 from ui.auth import login, logout
 import os
 from pathlib import Path
+from libfind.cloudinary_config import upload_cover
+
+
 
 COVERS_DIR = Path(__file__).resolve().parent.parent / "data" / "covers"
 COVERS_DIR.mkdir(parents=True, exist_ok=True)
@@ -213,7 +216,9 @@ def _edit_delete_book_tab():
         col9, col10 = st.columns(2)
         shelf = col9.text_input("Shelf", value=book["shelf"] or "")
         rack = col10.text_input("Rack", value=book["rack"] or "")
-
+st.divider()
+st.subheader("Book Cover Image")
+uploaded_cover = st.file_uploader("Upload cover image", type=["png", "jpg", "jpeg"])
 uploaded_cover = st.file_uploader("Book Cover Image", type=["png", "jpg", "jpeg"])
 if uploaded_cover:
     cover_path = COVERS_DIR / f"book_{book_id}.png"

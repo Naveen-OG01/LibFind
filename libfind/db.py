@@ -52,6 +52,7 @@ SCHEMA = """
     );
 """
 
+
 BOOK_SELECT = """
     SELECT b.id, b.title, b.author, b.isbn,
            c.name AS category_name,
@@ -207,4 +208,9 @@ def update_book(book_id, category_name=None, **fields):
 def delete_book(book_id):
     with closing(get_connection()) as conn:
         conn.execute("DELETE FROM books WHERE id = ?", (book_id,))
+        conn.commit()
+
+def update_book_cover(book_id, cover_url):
+    with closing(get_connection()) as conn:
+        conn.execute("UPDATE books SET cover_image = ? WHERE id = ?", (cover_url, book_id))
         conn.commit()
