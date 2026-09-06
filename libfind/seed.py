@@ -1,6 +1,9 @@
 """Seed the SQLite database with a realistic sample catalogue."""
 from . import db
 
+
+
+
 SAMPLE_BOOKS = [
     # (title, author, isbn, category, publisher, year, total, available, shelf, rack)
     ("Python Crash Course", "Eric Matthes", "9781593279288", "Computer Science", "No Starch Press", 2019, 8, 7, "CS-1", "R2"),
