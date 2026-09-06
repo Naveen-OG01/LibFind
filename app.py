@@ -2,6 +2,7 @@ import streamlit as st
 from libfind import db, seed
 from ui import student, admin, analytics_page
 from libfind.seed import seed_if_empty
+from ui.borrow import borrow_page
 
 
 
@@ -26,6 +27,7 @@ def main():
     st.sidebar.title("📚 LibFind")
     st.sidebar.caption("Search. Locate. Read.")
     st.sidebar.caption("Library / Education Technology Mini Project")
+    st.tabs(["Search", "Admin", "Analytics", "Borrowing"])
 
     page = st.sidebar.radio(
         "Navigate",
