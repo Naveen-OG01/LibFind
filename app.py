@@ -47,7 +47,7 @@ def main():
         from ui import analytics_page
         analytics_page.render()
     elif page == "Book Borrowing":
-        from ui import borrow
+        from ui.borrow import borrow_page
         borrow_page()
 
 
