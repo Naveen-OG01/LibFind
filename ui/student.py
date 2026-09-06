@@ -1,5 +1,6 @@
 """Student-facing search UI."""
 import streamlit as st
+from pathlib import Path
 
 from libfind import db, recommend, search
 
@@ -105,3 +106,13 @@ def _book_card(book):
         c4.markdown(
             f"**ISBN / Year**  \n{book.get('isbn') or '—'} ({book.get('publication_year') or '—'})"
         )
+def _book_card(book):
+    # Show cover if exists
+    if book.get("cover_image"):
+        cover_path = Path(book["cover_image"])
+        if cover_path.exists():
+            st.image(str(cover_path), width=150)
+    
+    st.write(f"**{book['title']}**")
+    st.write(f"by {book['author']}")
+    # ... rest of card

@@ -26,6 +26,7 @@ SCHEMA = """
         shelf TEXT DEFAULT '',
         rack TEXT DEFAULT '',
         description TEXT DEFAULT '',
+        cover_image TEXT,
         FOREIGN KEY (category_id) REFERENCES categories(id)
     );
 
@@ -199,7 +200,7 @@ def update_book(book_id, category_name=None, **fields):
         return
     values.append(book_id)
     with closing(get_connection()) as conn:
-        conn.execute(f"UPDATE books SET {', '.join(set_clause)} WHERE id = ?", values)
+        conn.execute("UPDATE books SET cover_image = ? WHERE id = ?", (cover_path, book_id))
         conn.commit()
 
 

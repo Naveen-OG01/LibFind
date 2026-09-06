@@ -4,6 +4,11 @@ from sqlite3 import IntegrityError
 
 from libfind import db
 from ui.auth import login, logout
+import os
+from pathlib import Path
+
+COVERS_DIR = Path(__file__).resolve().parent.parent / "data" / "covers"
+COVERS_DIR.mkdir(parents=True, exist_ok=True)
 
 def admin_page():
     if not login():
@@ -205,12 +210,17 @@ def _edit_delete_book_tab():
             value=int(book["available_copies"]),
             step=1,
         )
-
         col9, col10 = st.columns(2)
         shelf = col9.text_input("Shelf", value=book["shelf"] or "")
         rack = col10.text_input("Rack", value=book["rack"] or "")
 
-        submitted = st.form_submit_button(
+uploaded_cover = st.file_uploader("Book Cover Image", type=["png", "jpg", "jpeg"])
+if uploaded_cover:
+    cover_path = COVERS_DIR / f"book_{book_id}.png"
+    cover_path.write_bytes(uploaded_cover.read())
+    db.update_book_cover(book_id, str(cover_path))
+    st.success("Cover uploaded!")
+    submitted = st.form_submit_button(
             "Save changes",
             type="primary",
             use_container_width=True,
