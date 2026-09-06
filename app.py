@@ -37,18 +37,17 @@ def main():
         "Get copy availability and shelf/rack location instantly."
     )
 
-    # Single routing block — no duplicates
     if page == "🔎 Student Search":
-        from ui.student import student_page
-        student_page()
+        from ui import student
+        student.render()
     elif page == "🛠 Admin Interface":
-        from ui.admin import admin_page
-        admin_page()
+        from ui import admin
+        admin.render()
     elif page == "📊 Library Analytics":
-        from ui.analytics_page import analytics_page
+        from ui import analytics_page
         analytics_page.render()
     elif page == "Book Borrowing":
-        from ui.borrow import borrow_page
+        from ui import borrow
         borrow_page()
 
 
