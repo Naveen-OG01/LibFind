@@ -53,9 +53,10 @@ def get_connection():
 def init_db():
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     with closing(get_connection()) as conn:
-        conn.executescript(SCHEMA)
-        conn.commit()
-        cur.execute("""
+     conn.executescript(SCHEMA)
+    cur = conn.cursor()
+   
+    cur.execute("""
                 CREATE TABLE IF NOT EXISTS students (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name TEXT NOT NULL,
@@ -66,7 +67,7 @@ def init_db():
             )
         """)
 
-        cur.execute("""
+    cur.execute("""
             CREATE TABLE IF NOT EXISTS borrows (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 student_id INTEGER NOT NULL,
@@ -79,7 +80,8 @@ def init_db():
                 FOREIGN KEY (book_id) REFERENCES books(id)
             )
         """)
-
+    conn.commit()
+    
 def count_books():
     with closing(get_connection()) as conn:
         return conn.execute("SELECT COUNT(*) FROM books").fetchone()[0]
