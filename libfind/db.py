@@ -40,6 +40,33 @@ BOOK_SELECT = """
 SELECT b.*, c.name AS category_name
 FROM books b
 JOIN categories c ON c.id = b.category_id
+
+CREATE TABLE IF NOT EXISTS books (
+        ...
+    );
+    
+    CREATE TABLE IF NOT EXISTS students (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        email TEXT UNIQUE NOT NULL,
+        phone TEXT,
+        roll_number TEXT UNIQUE NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+    
+    CREATE TABLE IF NOT EXISTS borrows (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        student_id INTEGER NOT NULL,
+        book_id INTEGER NOT NULL,
+        borrow_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        due_date TIMESTAMP,
+        return_date TIMESTAMP,
+        status TEXT DEFAULT 'borrowed',
+        FOREIGN KEY (student_id) REFERENCES students(id),
+        FOREIGN KEY (book_id) REFERENCES books(id)
+    );
+
+
 """
 
 
@@ -81,7 +108,7 @@ def init_db():
             )
         """)
     conn.commit()
-    
+
 def count_books():
     with closing(get_connection()) as conn:
         return conn.execute("SELECT COUNT(*) FROM books").fetchone()[0]
