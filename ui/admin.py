@@ -216,42 +216,48 @@ def _edit_delete_book_tab():
         col9, col10 = st.columns(2)
         shelf = col9.text_input("Shelf", value=book["shelf"] or "")
         rack = col10.text_input("Rack", value=book["rack"] or "")
-st.divider()
-st.subheader("Book Cover Image")
-uploaded_cover = st.file_uploader("Upload cover image", type=["png", "jpg", "jpeg"])
-uploaded_cover = st.file_uploader("Book Cover Image", type=["png", "jpg", "jpeg"])
-if uploaded_cover:
-    cover_path = COVERS_DIR / f"book_{book_id}.png"
-    cover_path.write_bytes(uploaded_cover.read())
-    db.update_book_cover(book_id, str(cover_path))
-    st.success("Cover uploaded!")
-    submitted = st.form_submit_button(
+        st.divider()
+        st.subheader("📚 Book Cover Image")
+        
+        # Show current cover if exists
+        if book.get("cover_image"):
+            st.image(book["cover_image"], width=150, caption="Current cover")
+        
+        uploaded_cover = st.file_uploader("Upload new cover image", type=["png", "jpg", "jpeg"])
+
+        submitted = st.form_submit_button(
             "Save changes",
             type="primary",
             use_container_width=True,
         )
 
-    if submitted:
-        if not title.strip() or not author.strip():
-            st.error("Title and author are required.")
-        elif available_copies > total_copies:
-            st.error("Available copies cannot exceed total copies.")
-        else:
-            db.update_book(
-                book_id,
-                title=title,
-                author=author,
-                isbn=isbn,
-                category_name=category,
-                publisher=publisher,
-                publication_year=year or None,
-                total_copies=total_copies,
-                available_copies=available_copies,
-                shelf=shelf,
-                rack=rack,
-            )
-            st.success("Book updated.")
-            st.rerun()
+
+        if submitted:
+            if not title.strip() or not author.strip():
+                st.error("Title and author are required.")
+            elif available_copies > total_copies:
+                st.error("Available copies cannot exceed total copies.")
+            else:
+                # Upload cover to Cloudinary if provided
+                if uploaded_cover:
+                    cover_url = upload_cover(uploaded_cover.read(), book_id)
+                    db.update_book_cover(book_id, cover_url)
+                
+                db.update_book(
+                    book_id,
+                    title=title,
+                    author=author,
+                    isbn=isbn,
+                    category_name=category,
+                    publisher=publisher,
+                    publication_year=publication_year,
+                    total_copies=total_copies,
+                    available_copies=available_copies,
+                    shelf=shelf,
+                    rack=rack,
+                )
+                st.success("Book updated!")
+                st.rerun()
 
     st.divider()
 
