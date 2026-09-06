@@ -3,7 +3,7 @@ from libfind import db, seed
 from ui import student, admin, analytics_page
 from libfind.seed import seed_if_empty
 from ui.borrow import borrow_page
-
+from libfind.db import init_db
 
 
 st.set_page_config(
@@ -24,6 +24,7 @@ bootstrap()
 
 
 def main():
+    init_db() 
     st.sidebar.title("📚 LibFind")
     st.sidebar.caption("Search. Locate. Read.")
     st.sidebar.caption("Library / Education Technology Mini Project")
