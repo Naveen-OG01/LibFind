@@ -53,15 +53,25 @@ SCHEMA = """
 """
 
 
-BOOK_SELECT = """
-    SELECT b.id, b.title, b.author, b.isbn,
-           c.name AS category_name,
-           b.total_copies, b.available_copies,
-           b.shelf, b.rack,
-           b.description, b.publisher, b.publication_year
-    FROM books b
-    LEFT JOIN categories c ON c.id = b.category_id
+BBOOK_SELECT = """
+SELECT
+    b.id,
+    b.title,
+    b.author,
+    b.isbn,
+    c.name AS category_name,
+    b.publisher,
+    b.publication_year,
+    b.total_copies,
+    b.available_copies,
+    b.shelf,
+    b.rack,
+    b.description,
+    b.cover_image AS cover_image
+FROM books b
+LEFT JOIN categories c ON c.id = b.category_id
 """
+
 
 
 def get_connection():
