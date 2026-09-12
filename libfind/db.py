@@ -205,7 +205,15 @@ def update_book(book_id, category_name=None, **fields):
         return
     values.append(book_id)
     with closing(get_connection()) as conn:
-        conn.execute("UPDATE books SET cover_image = ? WHERE id = ?", (cover_path, book_id))
+        conn.execute(
+            f"UPDATE books SET {', '.join(set_clause)} WHERE id = ?",
+            values,
+        )
+        conn.commit()
+
+def update_book_cover(book_id, cover_url):
+    with closing(get_connection()) as conn:
+        conn.execute("UPDATE books SET cover_image = ? WHERE id = ?", (cover_url, book_id))
         conn.commit()
 
 
