@@ -146,6 +146,8 @@ def _edit_delete_book_tab():
             try:
                 if uploaded_cover:
                     cover_url = upload_cover(uploaded_cover.read(), book_id)
+                    if cover_url:
+                        db.update_book_cover(book_id, cover_url)
                     db.update_book_cover(book_id, cover_url)
                 db.update_book(
                     book_id, title=title, author=author, isbn=isbn,
