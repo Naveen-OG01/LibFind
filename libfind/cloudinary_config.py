@@ -1,15 +1,16 @@
+import streamlit as st
 import cloudinary
 import cloudinary.uploader
 
+cfg = st.secrets
 cloudinary.config(
-    cloud_name="ii9kpnbm",
-    api_key="383859391535822",
-    api_secret="UpoFGBLfvvL34rLKvkcZq7-6si0",
+    cloud_name=cfg["CLOUD_NAME"],
+    api_key=cfg["API_KEY"],
+    api_secret=cfg["API_SECRET"],
 )
 
 
 def upload_cover(file_bytes, book_id):
-    """Upload cover image to Cloudinary and return URL."""
     result = cloudinary.uploader.upload(
         file_bytes,
         public_id=f"libfind/covers/book_{book_id}",
