@@ -17,12 +17,15 @@ def render():
             password = st.text_input("Password", type="password")
             submitted = st.form_submit_button("Login", use_container_width=True)
         if submitted:
-            if username == "admin" and password == "admin123":
+            expected_user = str(st.secrets.get("ADMIN_USERNAME", "admin")).strip()
+            expected_pass = str(st.secrets.get("ADMIN_PASSWORD", "admin123")).strip()
+
+            if username.strip() == expected_user and password.strip() == expected_pass:
                 st.session_state.admin_logged_in = True
                 st.rerun()
             else:
                 st.error("Invalid credentials")
-        return
+
 
     # ---- Logged in ----
     st.title("🛠 Admin / Library Interface")
