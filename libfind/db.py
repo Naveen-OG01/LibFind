@@ -53,7 +53,7 @@ SCHEMA = """
 """
 
 
-BBOOK_SELECT = """
+BOOK_SELECT = """
 SELECT
     b.id,
     b.title,
