@@ -1,7 +1,7 @@
 import streamlit as st
+
 from libfind import db, seed
-from libfind.seed import seed_if_empty
-from libfind.db import init_db
+
 
 st.set_page_config(
     page_title="LibFind — Search. Locate. Read.",
@@ -21,7 +21,6 @@ bootstrap()
 
 
 def main():
-    init_db()
     st.sidebar.title("📚 LibFind")
     st.sidebar.caption("Search. Locate. Read.")
     st.sidebar.caption("Library / Education Technology Mini Project")
@@ -38,14 +37,14 @@ def main():
     )
 
     if page == "🔎 Student Search":
-        from ui import student
-        student.render()
+        from ui.student import render as student_render
+        student_render()
     elif page == "🛠 Admin Interface":
-        from ui import admin
-        admin.render()
+        from ui.admin import render as admin_render
+        admin_render()
     elif page == "📊 Library Analytics":
-        from ui import analytics_page
-        analytics_page.render()
+        from ui.analytics_page import render as analytics_render
+        analytics_render()
     elif page == "Book Borrowing":
         from ui.borrow import borrow_page
         borrow_page()
