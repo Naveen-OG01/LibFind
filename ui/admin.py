@@ -6,23 +6,27 @@ from libfind.cloudinary_config import upload_cover
 
 
 def render():
-    # ---- Login gate ----
-    if not st.session_state.get("admin_logged_in", False):
-        st.title("🔐 Admin Login")
-        with st.form("admin_login_form"):
-            username = st.text_input("Username")
-            password = st.text_input("Password", type="password")
-            submitted = st.form_submit_button("Login", use_container_width=True)
-        if submitted:
-            if username.strip() == "admin" and password.strip() == "admin123":
-                st.session_state.admin_logged_in = True
-                st.rerun()
-            else:
-                st.error("Invalid credentials")
-                return   # ← THIS LINE IS THE FIX (same indent as st.title above)
+    if st.session_state.get("admin_logged_in", False):
+        _admin_screen()
+    else:
+        _login_screen()
 
 
-    # ---- Logged in ----
+def _login_screen():
+    st.title("🔐 Admin Login")
+    with st.form("admin_login_form"):
+        username = st.text_input("Username")
+        password = st.text_input("Password", type="password")
+        submitted = st.form_submit_button("Login", use_container_width=True)
+    if submitted:
+        if username.strip() == "admin" and password.strip() == "admin123":
+            st.session_state.admin_logged_in = True
+            st.rerun()
+        else:
+            st.error("Invalid credentials")
+
+
+def _admin_screen():
     st.title("🛠 Admin / Library Interface")
     if st.sidebar.button("Logout"):
         st.session_state.admin_logged_in = False
@@ -37,6 +41,8 @@ def render():
         _edit_delete_book_tab()
     with tab_cat:
         _categories_tab()
+
+
 
 
 def _add_book_tab():
