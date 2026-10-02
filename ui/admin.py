@@ -7,24 +7,19 @@ from libfind.cloudinary_config import upload_cover
 
 def render():
     # ---- Login gate ----
-    if "admin_logged_in" not in st.session_state:
-        st.session_state.admin_logged_in = False
-
-    if not st.session_state.admin_logged_in:
+    if not st.session_state.get("admin_logged_in", False):
         st.title("🔐 Admin Login")
         with st.form("admin_login_form"):
             username = st.text_input("Username")
             password = st.text_input("Password", type="password")
             submitted = st.form_submit_button("Login", use_container_width=True)
         if submitted:
-            expected_user = str(st.secrets.get("ADMIN_USERNAME", "admin")).strip()
-            expected_pass = str(st.secrets.get("ADMIN_PASSWORD", "admin123")).strip()
-
-            if username.strip() == expected_user and password.strip() == expected_pass:
+            if username.strip() == "admin" and password.strip() == "admin123":
                 st.session_state.admin_logged_in = True
                 st.rerun()
             else:
                 st.error("Invalid credentials")
+                return   # ← THIS LINE IS THE FIX (same indent as st.title above)
 
 
     # ---- Logged in ----
