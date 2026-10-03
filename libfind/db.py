@@ -175,9 +175,10 @@ def init_db():
         conn.executescript(SCHEMA)
         try:
             conn.execute("ALTER TABLE books ADD COLUMN cover_image TEXT")
-        except sqlite3.OperationalError:
-            pass
-        conn.commit()
+        except Exception as exc:
+            if "duplicate column" not in str(exc).lower():
+                raise
+
 
 
 def count_books():
