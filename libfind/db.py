@@ -1,4 +1,7 @@
 """SQLite connection and catalogue CRUD operations."""
+
+import streamlit as st
+import libsql
 import sqlite3
 from contextlib import closing
 from pathlib import Path
@@ -74,11 +77,96 @@ LEFT JOIN categories c ON c.id = b.category_id
 
 
 
+class _Row(dict):
+    """Works as both dict (row["name"]) and tuple (row[0])."""
+
+    def __init__(self, cols, values):
+        super().__init__(zip(cols, values))
+        self._values = values
+
+    def __getitem__(self, key):
+        if isinstance(key, int):
+            return self._values[key]
+        return super().__getitem__(key)
+
+
+class _TursoCursor:
+    def __init__(self, raw_conn, raw_cur):
+        self._raw_conn = raw_conn
+        self._raw = raw_cur
+
+    def fetchone(self):
+        row = self._raw.fetchone()
+        if row is None:
+            return None
+        cols = [d[0] for d in self._raw.description or []]
+        return _Row(cols, row)
+
+    def fetchall(self):
+        cols = [d[0] for d in self._raw.description or []]
+        return [_Row(cols, r) for r in self._raw.fetchall()]
+
+    @property
+    def lastrowid(self):
+        try:
+            if self._raw.lastrowid:
+                return self._raw.lastrowid
+        except Exception:
+            pass
+        row = self._raw_conn.execute("SELECT last_insert_rowid() AS id").fetchone()
+        return row[0] if row else None
+
+    def __getattr__(self, name):
+        return getattr(self._raw, name)
+
+
+class _TursoConnection:
+    def __init__(self, raw):
+        self._raw = raw
+
+    def execute(self, sql, params=()):
+        if sql.lstrip().upper().startswith("PRAGMA"):
+            class _Noop:
+                description = None
+                lastrowid = None
+                def fetchone(self): return None
+                def fetchall(self): return []
+            return _Noop()
+        return _TursoCursor(self._raw, self._raw.execute(sql, params))
+
+    def cursor(self):
+        conn = self
+        class _Cursor:
+            def execute(self, sql, params=()):
+                return conn.execute(sql, params)
+        return _Cursor()
+
+    def executescript(self, script):
+        for stmt in script.split(";"):
+            if stmt.strip():
+                self._raw.execute(stmt)
+
+    def commit(self):
+        self._raw.commit()
+
+    def close(self):
+        self._raw.close()
+
+
 def get_connection():
-    conn = sqlite3.connect(str(DB_PATH))
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys = ON")
-    return conn
+    try:
+        return _TursoConnection(
+            libsql.connect(
+                database=st.secrets["TURSO_DATABASE_URL"],
+                auth_token=st.secrets["TURSO_AUTH_TOKEN"],
+            )
+        )
+    except (FileNotFoundError, KeyError):
+        # Fallback for local dev without Turso secrets
+        conn = sqlite3.connect(str(DB_PATH))
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA foreign_keys = ON")
+        return conn
 
 
 def init_db():
