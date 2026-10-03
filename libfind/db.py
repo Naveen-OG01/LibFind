@@ -135,11 +135,35 @@ class _TursoConnection:
         return _TursoCursor(self._raw, self._raw.execute(sql, params))
 
     def cursor(self):
-        conn = self
+        connection = self
+
         class _Cursor:
+            def __init__(self):
+                self._result = None
+
             def execute(self, sql, params=()):
-                return conn.execute(sql, params)
+                self._result = connection.execute(sql, params)
+                return self
+
+            def fetchone(self):
+                return self._result.fetchone()
+
+            def fetchall(self):
+                return self._result.fetchall()
+
+            @property
+            def lastrowid(self):
+                return self._result.lastrowid
+
+            @property
+            def description(self):
+                return getattr(self._result, "description", None)
+
+            def __getattr__(self, name):
+                return getattr(self._result, name)
+
         return _Cursor()
+
 
     def executescript(self, script):
         for stmt in script.split(";"):
