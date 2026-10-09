@@ -38,7 +38,7 @@ def borrow_page():
                 student_id = cur.fetchone()[0]
                 
                 # Add borrow record
-                due_date = datetime.now() + timedelta(days=due_days)
+                due_date = (datetime.now() + timedelta(days=due_days)).isoformat()
                 cur.execute(
                     "INSERT INTO borrows (student_id, book_id, due_date) VALUES (?, ?, ?)",
                     (student_id, book_options[selected_book], due_date)
