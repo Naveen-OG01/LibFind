@@ -1,5 +1,6 @@
 """Book borrowing / returning UI."""
-from datetime import datetime, timedelta
+import math
+from datetime import datetime
 
 import pandas as pd
 import streamlit as st
@@ -10,17 +11,37 @@ from libfind import db
 def borrow_page():
     st.title("📚 Book Borrowing")
 
-    tab1, tab2, tab3 = st.tabs(["Borrow Book", "Return Book", "View Records"])
-
+    tab1, tab2, tab3, tab4 = st.tabs(
+        ["Borrow Book", "My Books", "Return / Renew", "View Records"]
+    )
     with tab1:
         _borrow_tab()
-
     with tab2:
-        _return_tab()
-
+        _my_books_tab()
     with tab3:
+        _return_tab()
+    with tab4:
         _records_tab()
 
+
+# ---------- helpers ----------
+
+def _due_info(due_date):
+    """Return (is_overdue, days_overdue) for a stored due date."""
+    if not due_date:
+        return False, 0
+    try:
+        due = datetime.fromisoformat(str(due_date))
+    except ValueError:
+        return False, 0
+    now = datetime.now()
+    if now > due:
+        days = math.ceil((now - due).total_seconds() / 86400)
+        return True, days
+    return False, 0
+
+
+# ---------- tabs ----------
 
 def _borrow_tab():
     st.subheader("Borrow a Book")
@@ -35,9 +56,16 @@ def _borrow_tab():
         return
 
     book_options = {f"{b['title']} by {b['author']}": b["id"] for b in books}
-    selected_book = st.selectbox("Select Book", list(book_options.keys()), key="borrow_book")
+    selected_book = st.selectbox(
+        "Select Book", list(book_options.keys()), key="borrow_book"
+    )
     due_days = st.number_input(
         "Loan Period (days)", min_value=1, max_value=30, value=14, key="borrow_days"
+    )
+
+    st.caption(
+        f"Rules: max {db.MAX_BOOKS_PER_STUDENT} books per student · "
+        f"{db.MAX_RENEWALS} renewals allowed"
     )
 
     if st.button("Borrow Book", key="borrow_btn"):
@@ -51,132 +79,129 @@ def _borrow_tab():
             ]
             if not (value or "").strip()
         ]
-
         if missing:
             st.error("Please fill: " + ", ".join(missing))
             return
 
-        book_id = book_options[selected_book]
-        roll = roll_number.strip()
-
-        conn = db.get_connection()
-        cur = conn.cursor()
-
-        cur.execute(
-            "INSERT OR IGNORE INTO students (name, email, roll_number) VALUES (?, ?, ?)",
-            (student_name.strip(), student_email.strip(), roll),
+        ok, result = db.borrow_book(
+            student_name, student_email, roll_number,
+            book_options[selected_book], due_days,
         )
-        conn.commit()
+        if ok:
+            st.success(f"Book borrowed successfully! Due: {str(result)[:10]}")
+            st.rerun()
+        else:
+            st.error(result)
 
-        cur.execute("SELECT id FROM students WHERE roll_number = ?", (roll,))
-        row = cur.fetchone()
-        if row is None:
-            st.error("Could not register the student record. Check the roll number/email.")
-            conn.close()
-            return
-        student_id = row[0]
 
-        due_date = (datetime.now() + timedelta(days=due_days)).isoformat()
+def _my_books_tab():
+    st.subheader("My Books")
+    st.caption("Students can check their borrowed books and due dates here.")
 
-        cur.execute(
-            "INSERT INTO borrows (student_id, book_id, due_date) VALUES (?, ?, ?)",
-            (student_id, book_id, due_date),
-        )
-        cur.execute(
-            "UPDATE books SET available_copies = available_copies - 1 "
-            "WHERE id = ? AND available_copies > 0",
-            (book_id,),
-        )
-        conn.commit()
-        conn.close()
+    roll = st.text_input("Roll Number", key="mybooks_roll")
+    if st.button("Show my books", key="mybooks_btn"):
+        if roll.strip():
+            st.session_state["mybooks_query"] = roll.strip()
+        else:
+            st.error("Enter a roll number.")
 
-        st.success("Book borrowed successfully!")
-        st.rerun()
+    query = st.session_state.get("mybooks_query")
+    if not query:
+        return
+
+    loans = db.active_loans(query)
+    if not loans:
+        st.info(f"No active borrows for roll number {query}.")
+        return
+
+    st.caption(f"{len(loans)} active borrow(s) for {query}")
+    for loan in loans:
+        overdue, days = _due_info(loan["due_date"])
+        if overdue:
+            st.error(
+                f"**{loan['title']}** — OVERDUE by {days} day(s) "
+                f"(was due {str(loan['due_date'])[:10]})"
+            )
+        else:
+            st.warning(
+                f"**{loan['title']}** — due {str(loan['due_date'])[:10]}"
+            )
 
 
 def _return_tab():
-    st.subheader("Return a Book")
+    st.subheader("Return / Renew Books")
 
-    conn = db.get_connection()
-    cur = conn.cursor()
-    cur.execute(
-        """
-        SELECT b.id, s.name, s.roll_number, bk.title,
-               b.borrow_date, b.due_date
-        FROM borrows b
-        JOIN students s ON b.student_id = s.id
-        JOIN books bk ON b.book_id = bk.id
-        WHERE b.status = 'borrowed'
-        ORDER BY b.borrow_date DESC
-        """
-    )
-    records = cur.fetchall()
-    conn.close()
-
-    if not records:
-        st.info("No books currently borrowed")
+    loans = db.active_loans()
+    if not loans:
+        st.info("No books currently borrowed.")
         return
 
-    for record in records:
-        with st.expander(f"{record[1]} — {record[3]}"):
-            st.write(f"Roll: {record[2]}")
-            st.write(f"Borrowed: {record[4]}")
-            st.write(f"Due: {record[5]}")
+    for loan in loans:
+        overdue, days = _due_info(loan["due_date"])
+        label = f"{loan['name']} — {loan['title']}"
+        if overdue:
+            label += f"  ⚠️ OVERDUE {days}d"
 
-            if st.button("Mark Returned", key=f"return_{record[0]}"):
-                conn = db.get_connection()
-                cur = conn.cursor()
-                cur.execute(
-                    "UPDATE borrows SET status = 'returned', "
-                    "return_date = CURRENT_TIMESTAMP WHERE id = ?",
-                    (record[0],),
-                )
-                cur.execute(
-                    "UPDATE books SET available_copies = available_copies + 1 "
-                    "WHERE id = (SELECT book_id FROM borrows WHERE id = ?)",
-                    (record[0],),
-                )
-                conn.commit()
-                conn.close()
-                st.success("Book returned!")
-                st.rerun()
+        with st.expander(label, expanded=overdue):
+            st.write(f"Roll: {loan['roll_number']}")
+            st.write(f"Borrowed: {loan['borrow_date']}")
+            st.write(f"Due: {str(loan['due_date'])[:19]}")
+            st.write(f"Renewals used: {loan['renewals'] or 0} / {db.MAX_RENEWALS}")
+            if overdue:
+                st.error(f"Overdue by {days} day(s) — collect immediately.")
+
+            col1, col2 = st.columns(2)
+            if col1.button("↩ Mark Returned", key=f"return_{loan['id']}"):
+                ok, msg = db.return_book(loan["id"])
+                if ok:
+                    st.success(msg)
+                    st.rerun()
+                else:
+                    st.error(msg)
+            if col2.button("🔄 Renew (+14 days)", key=f"renew_{loan['id']}"):
+                ok, msg = db.renew_book(loan["id"])
+                if ok:
+                    st.success(msg)
+                    st.rerun()
+                else:
+                    st.error(msg)
 
 
 def _records_tab():
     st.subheader("All Borrowing Records")
 
-    conn = db.get_connection()
-    cur = conn.cursor()
-    cur.execute(
-        """
-        SELECT s.name, s.roll_number, bk.title,
-               b.borrow_date, b.due_date, b.return_date, b.status
-        FROM borrows b
-        JOIN students s ON b.student_id = s.id
-        JOIN books bk ON b.book_id = bk.id
-        ORDER BY b.borrow_date DESC
-        """
-    )
-    records = cur.fetchall()
-    conn.close()
-
+    records = db.borrow_history()
     if not records:
-        st.info("No records yet")
+        st.info("No records yet.")
         return
 
-    df = pd.DataFrame(
-        [
+    rows = []
+    for r in records:
+        if r["status"] == "borrowed":
+            overdue, _ = _due_info(r["due_date"])
+            status = "⚠️ OVERDUE" if overdue else "borrowed"
+        else:
+            status = r["status"]
+
+        rows.append(
             {
                 "Student": r["name"],
                 "Roll No": r["roll_number"],
                 "Book": r["title"],
                 "Borrowed": r["borrow_date"],
-                "Due": r["due_date"],
+                "Due": str(r["due_date"])[:19],
                 "Returned": r["return_date"],
-                "Status": r["status"],
+                "Status": status,
             }
-            for r in records
-        ]
-    )
+        )
+
+    df = pd.DataFrame(rows)
     st.dataframe(df, use_container_width=True, hide_index=True)
+
+    st.download_button(
+        "⬇️ Download records as CSV",
+        df.to_csv(index=False),
+        file_name="libfind_borrow_records.csv",
+        mime="text/csv",
+    )
     

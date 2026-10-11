@@ -349,3 +349,207 @@ def update_book_cover(book_id, cover_url):
     with closing(get_connection()) as conn:
         conn.execute("UPDATE books SET cover_image = ? WHERE id = ?", (cover_url, book_id))
         conn.commit()
+# ============================================================
+# Borrowing rules & operations
+# ============================================================
+
+MAX_BOOKS_PER_STUDENT = 3
+MAX_RENEWALS = 2
+RENEWAL_DAYS = 14
+
+_ensure_borrow_schema_done = False
+
+
+def _ensure_borrow_schema():
+    """Add the renewals column once per process (idempotent)."""
+    global _ensure_borrow_schema_done
+    if _ensure_borrow_schema_done:
+        return
+    with closing(get_connection()) as conn:
+        try:
+            conn.execute("ALTER TABLE borrows ADD COLUMN renewals INTEGER DEFAULT 0")
+        except Exception:
+            pass
+    _ensure_borrow_schema_done = True
+
+
+def borrow_book(student_name, student_email, roll_number, book_id, loan_days=14):
+    """Register the student and borrow a book in one safe operation.
+
+    Returns (True, due_date_iso) on success, or (False, error_message).
+    """
+    from datetime import datetime, timedelta
+
+    name = (student_name or "").strip()
+    email = (student_email or "").strip()
+    roll = (roll_number or "").strip()
+
+    if not name or not email or not roll:
+        return False, "Student name, email and roll number are required."
+
+    _ensure_borrow_schema()
+
+    with closing(get_connection()) as conn:
+        # Rule 1: loan limit per student
+        row = conn.execute(
+            """
+            SELECT COUNT(*) FROM borrows
+            WHERE status = 'borrowed'
+              AND student_id = (SELECT id FROM students WHERE roll_number = ?)
+            """,
+            (roll,),
+        ).fetchone()
+        if row and int(row[0]) >= MAX_BOOKS_PER_STUDENT:
+            return False, (
+                f"Loan limit reached: a student can borrow at most "
+                f"{MAX_BOOKS_PER_STUDENT} books."
+            )
+
+        # Rule 2: student must not already hold this title
+        row = conn.execute(
+            """
+            SELECT COUNT(*) FROM borrows
+            WHERE status = 'borrowed'
+              AND book_id = ?
+              AND student_id = (SELECT id FROM students WHERE roll_number = ?)
+            """,
+            (book_id, roll),
+        ).fetchone()
+        if row and int(row[0]) > 0:
+            return False, "This student already has this book borrowed."
+
+        # Rule 3: at least one copy must be available
+        row = conn.execute(
+            "SELECT available_copies FROM books WHERE id = ?", (book_id,)
+        ).fetchone()
+        if not row:
+            return False, "Book not found."
+        if int(row[0]) <= 0:
+            return False, "No copies available right now."
+
+        # Register student (no-op if already registered)
+        conn.execute(
+            "INSERT OR IGNORE INTO students (name, email, roll_number) VALUES (?, ?, ?)",
+            (name, email, roll),
+        )
+        conn.commit()
+
+        row = conn.execute(
+            "SELECT id FROM students WHERE roll_number = ?", (roll,)
+        ).fetchone()
+        if not row:
+            return False, "Could not register the student record."
+        student_id = row[0]
+
+        # Decrement availability (guarded against going below 0)
+        conn.execute(
+            "UPDATE books SET available_copies = available_copies - 1 "
+            "WHERE id = ? AND available_copies > 0",
+            (book_id,),
+        )
+
+        due_date = (datetime.now() + timedelta(days=int(loan_days))).isoformat()
+        conn.execute(
+            "INSERT INTO borrows (student_id, book_id, due_date) VALUES (?, ?, ?)",
+            (student_id, book_id, due_date),
+        )
+        conn.commit()
+
+    return True, due_date
+
+
+def return_book(borrow_id):
+    """Mark a borrow as returned and restore availability."""
+    with closing(get_connection()) as conn:
+        row = conn.execute(
+            "SELECT book_id, status FROM borrows WHERE id = ?", (borrow_id,)
+        ).fetchone()
+        if not row:
+            return False, "Record not found."
+        if row["status"] != "borrowed":
+            return False, "This book has already been returned."
+
+        conn.execute(
+            "UPDATE borrows SET status = 'returned', "
+            "return_date = CURRENT_TIMESTAMP WHERE id = ?",
+            (borrow_id,),
+        )
+        conn.execute(
+            "UPDATE books SET available_copies = available_copies + 1 WHERE id = ?",
+            (row["book_id"],),
+        )
+        conn.commit()
+
+    return True, "Book returned successfully!"
+
+
+def renew_book(borrow_id, extra_days=RENEWAL_DAYS):
+    """Extend the due date of an active borrow."""
+    from datetime import datetime, timedelta
+
+    _ensure_borrow_schema()
+
+    with closing(get_connection()) as conn:
+        row = conn.execute(
+            "SELECT status, renewals FROM borrows WHERE id = ?",
+            (borrow_id,),
+        ).fetchone()
+        if not row:
+            return False, "Record not found."
+        if row["status"] != "borrowed":
+            return False, "Only borrowed books can be renewed."
+
+        renewals = int(row["renewals"] or 0)
+        if renewals >= MAX_RENEWALS:
+            return False, f"Renewal limit reached ({MAX_RENEWALS} renewals allowed)."
+
+        new_due = (datetime.now() + timedelta(days=int(extra_days))).isoformat()
+        conn.execute(
+            "UPDATE borrows SET due_date = ?, renewals = ? WHERE id = ?",
+            (new_due, renewals + 1, borrow_id),
+        )
+        conn.commit()
+
+    return True, f"Renewed — now due {str(new_due)[:10]}"
+
+
+def active_loans(roll_number=None):
+    """Active borrow records, optionally filtered to one student."""
+    _ensure_borrow_schema()
+
+    sql = """
+        SELECT b.id, s.name, s.roll_number, bk.title,
+               b.borrow_date, b.due_date, b.renewals
+        FROM borrows b
+        JOIN students s ON b.student_id = s.id
+        JOIN books bk ON b.book_id = bk.id
+        WHERE b.status = 'borrowed'
+    """
+    params = []
+    if roll_number:
+        sql += " AND s.roll_number = ?"
+        params.append((roll_number or "").strip())
+    sql += " ORDER BY b.due_date ASC"
+
+    with closing(get_connection()) as conn:
+        rows = conn.execute(sql, tuple(params)).fetchall()
+        return [dict(r) for r in rows]
+
+
+def borrow_history():
+    """All borrow records, newest first."""
+    with closing(get_connection()) as conn:
+        rows = conn.execute(
+            """
+            SELECT s.name, s.roll_number, bk.title,
+                   b.borrow_date, b.due_date, b.return_date, b.status
+            FROM borrows b
+            JOIN students s ON b.student_id = s.id
+            JOIN books bk ON b.book_id = bk.id
+            ORDER BY b.borrow_date DESC
+            """
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+
+    
