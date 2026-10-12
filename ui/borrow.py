@@ -59,7 +59,49 @@ def _borrow_tab():
         st.divider()
 
     st.subheader("Borrow a Book")
-    if ok:
+
+    student_name = st.text_input("Student Name", key="borrow_name")
+    student_email = st.text_input("Email", key="borrow_email")
+    roll_number = st.text_input("Roll Number", key="borrow_roll")
+
+    books = db.get_all_books()
+    if not books:
+        st.info("No books in the catalogue yet.")
+        return
+
+    book_options = {f"{b['title']} by {b['author']}": b["id"] for b in books}
+    selected_book = st.selectbox(
+        "Select Book", list(book_options.keys()), key="borrow_book"
+    )
+    due_days = st.number_input(
+        "Loan Period (days)", min_value=1, max_value=30, value=14, key="borrow_days"
+    )
+
+    st.caption(
+        f"Rules: max {db.MAX_BOOKS_PER_STUDENT} books per student · "
+        f"{db.MAX_RENEWALS} renewals allowed"
+    )
+
+    if st.button("Borrow Book", key="borrow_btn"):
+        missing = [
+            label
+            for label, value in [
+                ("Student Name", student_name),
+                ("Email", student_email),
+                ("Roll Number", roll_number),
+                ("Select Book", selected_book),
+            ]
+            if not (value or "").strip()
+        ]
+        if missing:
+            st.error("Please fill: " + ", ".join(missing))
+            return
+
+        ok, result = db.borrow_book(
+            student_name, student_email, roll_number,
+            book_options[selected_book], due_days,
+        )
+        if ok:
             st.session_state["issue_slip"] = {
                 "name": student_name.strip(),
                 "roll": roll_number.strip(),
@@ -68,7 +110,7 @@ def _borrow_tab():
                 "due": str(result)[:10],
             }
             st.rerun()
-    else:
+        else:
             st.error(result)
 
 
@@ -101,9 +143,7 @@ def _my_books_tab():
                 f"(was due {str(loan['due_date'])[:10]})"
             )
         else:
-            st.warning(
-                f"**{loan['title']}** — due {str(loan['due_date'])[:10]}"
-            )
+            st.warning(f"**{loan['title']}** — due {str(loan['due_date'])[:10]}")
 
 
 def _return_tab():
