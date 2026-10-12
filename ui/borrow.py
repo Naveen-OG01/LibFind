@@ -10,6 +10,7 @@ from libfind import db
 
 def borrow_page():
     st.title("📚 Book Borrowing")
+    is_admin = st.session_state.get("admin_logged_in", False)
 
     tab1, tab2, tab3, tab4 = st.tabs(
         ["Borrow Book", "My Books", "Return / Renew", "View Records"]
@@ -19,10 +20,39 @@ def borrow_page():
     with tab2:
         _my_books_tab()
     with tab3:
-        _return_tab()
+        if is_admin:
+            _return_tab()
+        else:
+            _admin_required("Return / Renew", "return_renew")
     with tab4:
-        _records_tab()
+        if is_admin:
+            _records_tab()
+        else:
+            _admin_required("View Records", "view_records")
 
+
+def _admin_required(page_name, slug):
+    """Login prompt shown when an admin-only tab is opened by a visitor."""
+    st.subheader(f"🔒 {page_name}")
+    st.info("Restricted to library administrators. Log in below.")
+
+    with st.form(f"borrow_admin_login_{slug}"):
+        username = st.text_input("Admin username")
+        password = st.text_input("Admin password", type="password")
+        submitted = st.form_submit_button("Login as admin", use_container_width=True)
+
+    if submitted:
+        try:
+            expected_user = str(st.secrets.get("ADMIN_USERNAME", "admin")).strip()
+            expected_pass = str(st.secrets.get("ADMIN_PASSWORD", "admin123")).strip()
+        except Exception:
+            expected_user, expected_pass = "admin", "admin123"
+
+        if username.strip() == expected_user and password.strip() == expected_pass:
+            st.session_state.admin_logged_in = True
+            st.rerun()
+        else:
+            st.error("Invalid credentials")
 
 # ---------- helpers ----------
 

@@ -520,6 +520,7 @@ def renew_book(borrow_id, extra_days=RENEWAL_DAYS):
             "UPDATE borrows SET due_date = ?, renewals = ? WHERE id = ?",
             (new_due, renewals + 1, borrow_id),
         )
+        _log_activity(conn, "RENEW", _loan_details(conn, borrow_id))
         conn.commit()
 
     return True, f"Renewed — now due {str(new_due)[:10]}"
