@@ -87,3 +87,21 @@ def low_stock(limit=10):
             (limit,),
         ).fetchall()
         return [dict(r) for r in rows]
+
+def most_borrowed(limit=10):
+    """Books ranked by how many times they have been borrowed."""
+    with closing(db.get_connection()) as conn:
+        rows = conn.execute(
+            """
+            SELECT bk.title, bk.author, COUNT(*) AS times_borrowed
+            FROM borrows b
+            JOIN books bk ON bk.id = b.book_id
+            GROUP BY b.book_id
+            ORDER BY times_borrowed DESC
+            LIMIT ?
+            """,
+            (limit,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    

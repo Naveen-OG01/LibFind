@@ -9,6 +9,7 @@ from libfind import analytics as core
 def render():
     st.title("📊 Library Analytics")
     st.caption("Live reports from the LibFind catalogue.")
+    st.subheader("⚠️ Low-availability books")
 
     summary = core.collection_summary()
 
@@ -63,6 +64,25 @@ def render():
         st.plotly_chart(fig2, use_container_width=True)
     else:
         st.info("No author data yet.")
+
+
+    st.subheader("🏆 Most borrowed books")
+    borrowed = core.most_borrowed(limit=10)
+
+    if borrowed:
+        bdf = pd.DataFrame(borrowed)
+        fig3 = px.bar(
+            bdf,
+            x="times_borrowed",
+            y="title",
+            orientation="h",
+            title="Most borrowed books",
+            labels={"times_borrowed": "Times borrowed", "title": "Book"},
+        )
+        st.plotly_chart(fig3, use_container_width=True)
+    else:
+        st.info("No borrowing activity yet.")
+    
 
     st.subheader("⚠️ Low-availability books")
     low = core.low_stock(limit=10)
