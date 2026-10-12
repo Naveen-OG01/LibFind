@@ -453,6 +453,16 @@ def borrow_book(student_name, student_email, roll_number, book_id, loan_days=14)
             "INSERT INTO borrows (student_id, book_id, due_date) VALUES (?, ?, ?)",
             (student_id, book_id, due_date),
         )
+
+        title_row = conn.execute(
+            "SELECT title FROM books WHERE id = ?", (book_id,)
+        ).fetchone()
+        book_title = title_row["title"] if title_row else str(book_id)
+        _log_activity(
+            conn,
+            "BORROW",
+            f"{name} ({roll}) borrowed '{book_title}', due {str(due_date)[:10]}",
+        )
         conn.commit()
 
     return True, due_date
@@ -478,6 +488,8 @@ def return_book(borrow_id):
             "UPDATE books SET available_copies = available_copies + 1 WHERE id = ?",
             (row["book_id"],),
         )
+        _log_activity(conn, "RETURN", _loan_details(conn, borrow_id))
+    
         conn.commit()
 
     return True, "Book returned successfully!"
@@ -551,5 +563,56 @@ def borrow_history():
         ).fetchall()
         return [dict(r) for r in rows]
 
+# ============================================================
+# Activity log
+# ============================================================
 
+def _log_activity(conn, action, details):
+    """Insert one activity row on the given connection."""
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS activity_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            action TEXT NOT NULL,
+            details TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+    conn.execute(
+        "INSERT INTO activity_log (action, details) VALUES (?, ?)",
+        (action, details),
+    )
+
+
+def _loan_details(conn, borrow_id):
+    row = conn.execute(
+        """
+        SELECT s.name, s.roll_number, bk.title
+        FROM borrows b
+        JOIN students s ON s.id = b.student_id
+        JOIN books bk ON bk.id = b.book_id
+        WHERE b.id = ?
+        """,
+        (borrow_id,),
+    ).fetchone()
+    if not row:
+        return f"borrow id {borrow_id}"
+    return f"{row['name']} ({row['roll_number']}) — {row['title']}"
+
+
+def get_activity(limit=200):
+    """Newest activity entries first."""
+    with closing(get_connection()) as conn:
+        try:
+            rows = conn.execute(
+                "SELECT action, details, created_at FROM activity_log "
+                "ORDER BY id DESC LIMIT ?",
+                (limit,),
+            ).fetchall()
+            return [dict(r) for r in rows]
+        except Exception:
+            return []
+
+        
     

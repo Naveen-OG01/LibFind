@@ -1,4 +1,7 @@
 """Admin / library catalogue management UI."""
+import csv
+import io
+
 import streamlit as st
 
 from libfind import db
@@ -19,7 +22,13 @@ def _login_screen():
         password = st.text_input("Password", type="password")
         submitted = st.form_submit_button("Login", use_container_width=True)
     if submitted:
-        if username.strip() == "admin" and password.strip() == "admin123":
+        try:
+            expected_user = str(st.secrets.get("ADMIN_USERNAME", "admin")).strip()
+            expected_pass = str(st.secrets.get("ADMIN_PASSWORD", "admin123")).strip()
+        except Exception:
+            expected_user, expected_pass = "admin", "admin123"
+
+        if username.strip() == expected_user and password.strip() == expected_pass:
             st.session_state.admin_logged_in = True
             st.rerun()
         else:
@@ -32,8 +41,14 @@ def _admin_screen():
         st.session_state.admin_logged_in = False
         st.rerun()
 
-    tab_add, tab_edit, tab_cat = st.tabs(
-        ["➕ Add Book", "✏️ Edit / Delete Book", "🏷️ Categories"]
+    tab_add, tab_edit, tab_cat, tab_bulk, tab_log = st.tabs(
+        [
+            "➕ Add Book",
+            "✏️ Edit / Delete Book",
+            "🏷️ Categories",
+            "📄 Bulk Import",
+            "📋 Activity Log",
+        ]
     )
     with tab_add:
         _add_book_tab()
@@ -41,8 +56,10 @@ def _admin_screen():
         _edit_delete_book_tab()
     with tab_cat:
         _categories_tab()
-
-
+    with tab_bulk:
+        _bulk_import_tab()
+    with tab_log:
+        _activity_tab()
 
 
 def _add_book_tab():
@@ -152,7 +169,6 @@ def _edit_delete_book_tab():
                     cover_url = upload_cover(uploaded_cover.read(), book_id)
                     if cover_url:
                         db.update_book_cover(book_id, cover_url)
-                    db.update_book_cover(book_id, cover_url)
                 db.update_book(
                     book_id, title=title, author=author, isbn=isbn,
                     category_name=category, publisher=publisher,
@@ -201,3 +217,84 @@ def _categories_tab():
                     st.rerun()
                 except ValueError as exc:
                     st.error(str(exc))
+
+
+def _bulk_import_tab():
+    st.subheader("Bulk add books from a CSV file")
+    st.caption(
+        "Header row required. Columns: title, author, isbn, category, "
+        "publisher, year, total_copies, shelf, rack "
+        "(only title and author are mandatory)."
+    )
+    st.code(
+        "title,author,isbn,category,publisher,year,total_copies,shelf,rack\n"
+        "Clean Code,Robert C. Martin,9780132350884,"
+        "Software Engineering,Prentice Hall,2008,4,B-1,R2",
+        language="csv",
+    )
+
+    uploaded = st.file_uploader("Choose a CSV file", type=["csv"], key="bulk_csv")
+    if uploaded is None:
+        return
+
+    try:
+        text = uploaded.getvalue().decode("utf-8-sig")
+    except UnicodeDecodeError:
+        st.error("Could not read the file — save it as UTF-8 CSV and try again.")
+        return
+
+    reader = csv.DictReader(io.StringIO(text))
+    fields = {(name or "").strip().lower() for name in (reader.fieldnames or [])}
+    if not {"title", "author"}.issubset(fields):
+        st.error("CSV must contain 'title' and 'author' columns (header row required).")
+        return
+
+    if st.button("📥 Import books", type="primary", key="bulk_import_btn"):
+        added, errors = 0, []
+        for i, raw in enumerate(reader, start=2):
+            row = {
+                (k or "").strip().lower(): (v or "").strip()
+                for k, v in raw.items()
+                if k is not None
+            }
+            if not row.get("title"):
+                continue
+            try:
+                db.add_book(
+                    title=row["title"],
+                    author=row.get("author", ""),
+                    isbn=row.get("isbn") or None,
+                    category_name=row.get("category") or "General",
+                    publisher=row.get("publisher") or "",
+                    publication_year=int(row["year"]) if row.get("year") else None,
+                    total_copies=int(row.get("total_copies") or 1),
+                    shelf=row.get("shelf") or "",
+                    rack=row.get("rack") or "",
+                )
+                added += 1
+            except Exception as exc:
+                errors.append(f"row {i}: {exc}")
+
+        st.success(f"✅ Imported {added} book(s).")
+        if errors:
+            st.warning(f"{len(errors)} row(s) skipped: " + "; ".join(errors[:8]))
+
+
+def _activity_tab():
+    st.subheader("📋 Activity Log")
+    st.caption("Latest borrow, return and renew events (most recent first).")
+
+    entries = db.get_activity(limit=200)
+    if not entries:
+        st.info("No activity recorded yet — borrow or return a book first.")
+        return
+
+    st.dataframe(
+        [
+            {"When": e["created_at"], "Action": e["action"], "Details": e["details"]}
+            for e in entries
+        ],
+        use_container_width=True,
+        hide_index=True,
+    )
+    
