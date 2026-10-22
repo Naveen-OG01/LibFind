@@ -1,5 +1,6 @@
 """SQLite connection and catalogue CRUD operations."""
-
+import math 
+from datetime import datetime
 import streamlit as st
 import libsql
 import sqlite3
@@ -42,7 +43,7 @@ SCHEMA = """
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
 
-    CREATE TABLE IF NOT EXISTS borrows (
+        CREATE TABLE IF NOT EXISTS borrows (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         student_id INTEGER NOT NULL,
         book_id INTEGER NOT NULL,
@@ -50,6 +51,25 @@ SCHEMA = """
         due_date TIMESTAMP,
         return_date TIMESTAMP,
         status TEXT DEFAULT 'borrowed',
+        fine_amount REAL DEFAULT 0,
+        fine_paid INTEGER DEFAULT 0,
+        FOREIGN KEY (student_id) REFERENCES students(id),
+        FOREIGN KEY (book_id) REFERENCES books(id)
+    );
+
+        CREATE TABLE IF NOT EXISTS activity_log (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        action TEXT NOT NULL,
+        details TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+
+        CREATE TABLE IF NOT EXISTS reservations (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        student_id INTEGER NOT NULL,
+        book_id INTEGER NOT NULL,
+        reserve_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        status TEXT DEFAULT 'pending',
         FOREIGN KEY (student_id) REFERENCES students(id),
         FOREIGN KEY (book_id) REFERENCES books(id)
     );
@@ -256,17 +276,45 @@ def delete_category_by_name(name):
 
 
 def get_or_create_category(conn, name):
+    """Return category id for `name`, creating it if needed. Robust against
+    UNIQUE violations on categories.name."""
     name = (name or "").strip() or "General"
+
+    # Try to find existing
     row = conn.execute(
-        "SELECT id FROM categories WHERE name = ? COLLATE NOCASE",
+        "SELECT id FROM categories WHERE name = ?",
         (name,),
     ).fetchone()
-    if row:
+
+    if row is not None:
+        # Handle both _Row (dict-like) and sqlite3.Row
+        try:
+            return row["id"]
+        except (KeyError, TypeError):
+            return row[0]
+
+    # Insert if not found. Use INSERT OR IGNORE to avoid UNIQUE crash.
+    conn.execute(
+        "INSERT OR IGNORE INTO categories(name) VALUES (?)",
+        (name,),
+    )
+    conn.commit()
+
+    # Re-select
+    row = conn.execute(
+        "SELECT id FROM categories WHERE name = ?",
+        (name,),
+    ).fetchone()
+
+    if row is None:
+        raise RuntimeError("Could not create or find category: " + name)
+
+    try:
         return row["id"]
-    cur = conn.execute("INSERT INTO categories(name) VALUES (?)", (name,))
-    return cur.lastrowid
+    except (KeyError, TypeError):
+        return row[0]
 
-
+    
 def get_all_books(category=None):
     sql = BOOK_SELECT
     params = []
@@ -283,7 +331,6 @@ def get_book(book_id):
         row = conn.execute(BOOK_SELECT + " WHERE b.id = ?", (book_id,)).fetchone()
         return dict(row) if row else None
 
-
 def add_book(title, author, isbn=None, category_name="General", publisher="",
              publication_year=None, total_copies=1, available_copies=None,
              shelf="", rack="", description=""):
@@ -291,14 +338,17 @@ def add_book(title, author, isbn=None, category_name="General", publisher="",
         raise ValueError("Book title is required.")
     if not author or not author.strip():
         raise ValueError("Book author is required.")
+
     total_copies = int(total_copies or 1)
-    available_copies = int(available_copies) if available_copies is not None else total_copies
-    available_copies = max(0, min(available_copies, total_copies))
+    if available_copies is None:
+        available_copies = total_copies
+    available_copies = max(0, min(int(available_copies), total_copies))
     isbn = (isbn or "").strip() or None
 
     with closing(get_connection()) as conn:
         category_id = get_or_create_category(conn, category_name)
-        cur = conn.execute(
+
+        conn.execute(
             """INSERT INTO books (title, author, isbn, category_id, publisher,
                publication_year, total_copies, available_copies, shelf, rack, description)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
@@ -307,8 +357,14 @@ def add_book(title, author, isbn=None, category_name="General", publisher="",
              rack or "", description or ""),
         )
         conn.commit()
-        return cur.lastrowid
 
+        row = conn.execute(
+            "SELECT id FROM books ORDER BY id DESC LIMIT 1"
+        ).fetchone()
+        try:
+            return row["id"]
+        except (KeyError, TypeError):
+            return row[0] if row else None
 
 def update_book(book_id, category_name=None, **fields):
     allowed = {"title", "author", "isbn", "publisher", "publication_year",
@@ -334,11 +390,6 @@ def update_book(book_id, category_name=None, **fields):
         )
         conn.commit()
 
-def update_book_cover(book_id, cover_url):
-    with closing(get_connection()) as conn:
-        conn.execute("UPDATE books SET cover_image = ? WHERE id = ?", (cover_url, book_id))
-        conn.commit()
-
 
 def delete_book(book_id):
     with closing(get_connection()) as conn:
@@ -361,13 +412,23 @@ _ensure_borrow_schema_done = False
 
 
 def _ensure_borrow_schema():
-    """Add the renewals column once per process (idempotent)."""
+    """Add missing columns once per process (idempotent)."""
     global _ensure_borrow_schema_done
     if _ensure_borrow_schema_done:
         return
     with closing(get_connection()) as conn:
+        # Add renewals if missing
         try:
             conn.execute("ALTER TABLE borrows ADD COLUMN renewals INTEGER DEFAULT 0")
+        except Exception:
+            pass
+        # Add fine tracking if missing
+        try:
+            conn.execute("ALTER TABLE borrows ADD COLUMN fine_amount REAL DEFAULT 0")
+        except Exception:
+            pass
+        try:
+            conn.execute("ALTER TABLE borrows ADD COLUMN fine_paid INTEGER DEFAULT 0")
         except Exception:
             pass
     _ensure_borrow_schema_done = True
@@ -427,19 +488,16 @@ def borrow_book(student_name, student_email, roll_number, book_id, loan_days=14)
         if int(row[0]) <= 0:
             return False, "No copies available right now."
 
-        # Register student (no-op if already registered)
-        conn.execute(
-            "INSERT OR IGNORE INTO students (name, email, roll_number) VALUES (?, ?, ?)",
-            (name, email, roll),
-        )
-        conn.commit()
-
+        
+        # Require an existing student account
         row = conn.execute(
-            "SELECT id FROM students WHERE roll_number = ?", (roll,)
+            "SELECT id FROM students WHERE roll_number = ?",
+            (roll,),
         ).fetchone()
         if not row:
-            return False, "Could not register the student record."
-        student_id = row[0]
+            return False, "Please register / log in before borrowing."
+        student_id = row["id"] if hasattr(row, "keys") else row[0]
+        conn.commit()
 
         # Decrement availability (guarded against going below 0)
         conn.execute(
@@ -468,32 +526,51 @@ def borrow_book(student_name, student_email, roll_number, book_id, loan_days=14)
     return True, due_date
 
 
-def return_book(borrow_id):
-    """Mark a borrow as returned and restore availability."""
+def return_book(borrow_id, fine_paid=False):
+    """Mark a borrow as returned, calculate fine, and record payment."""
+    _ensure_borrow_schema()
+    
     with closing(get_connection()) as conn:
         row = conn.execute(
-            "SELECT book_id, status FROM borrows WHERE id = ?", (borrow_id,)
+            "SELECT book_id, status, due_date FROM borrows WHERE id = ?", 
+            (borrow_id,)
         ).fetchone()
+        
         if not row:
             return False, "Record not found."
         if row["status"] != "borrowed":
             return False, "This book has already been returned."
 
+        # Calculate the fine based on the due date
+        days_late, fine_amount = compute_fine(row["due_date"])
+        
+        # Update the borrow record
         conn.execute(
-            "UPDATE borrows SET status = 'returned', "
-            "return_date = CURRENT_TIMESTAMP WHERE id = ?",
-            (borrow_id,),
+            """UPDATE borrows 
+               SET status = 'returned', 
+                   return_date = CURRENT_TIMESTAMP,
+                   fine_amount = ?,
+                   fine_paid = ?
+               WHERE id = ?""",
+            (fine_amount, 1 if fine_paid else 0, borrow_id),
         )
+        
+        # Put the book back on the shelf
         conn.execute(
             "UPDATE books SET available_copies = available_copies + 1 WHERE id = ?",
             (row["book_id"],),
         )
+        
         _log_activity(conn, "RETURN", _loan_details(conn, borrow_id))
-    
         conn.commit()
 
-    return True, "Book returned successfully!"
-
+    if days_late > 0:
+        if fine_paid:
+            return True, f"Book returned. Fine of ₹{fine_amount} collected."
+        else:
+            return True, f"Book returned. ⚠️ ₹{fine_amount} fine is UNPAID."
+    
+    return True, "Book returned successfully on time!"
 
 def renew_book(borrow_id, extra_days=RENEWAL_DAYS):
     """Extend the due date of an active borrow."""
@@ -545,17 +622,21 @@ def active_loans(roll_number=None):
     sql += " ORDER BY b.due_date ASC"
 
     with closing(get_connection()) as conn:
-        rows = conn.execute(sql, tuple(params)).fetchall()
-        return [dict(r) for r in rows]
-
-
+        try:
+            rows = conn.execute(sql, tuple(params)).fetchall()
+            return [dict(r) for r in rows]
+        except Exception as e:
+            print(f"Error fetching active loans: {e}")
+            return []
+        
 def borrow_history():
     """All borrow records, newest first."""
     with closing(get_connection()) as conn:
         rows = conn.execute(
             """
             SELECT s.name, s.roll_number, bk.title,
-                   b.borrow_date, b.due_date, b.return_date, b.status
+                   b.borrow_date, b.due_date, b.return_date, b.status,
+                   b.fine_amount, b.fine_paid
             FROM borrows b
             JOIN students s ON b.student_id = s.id
             JOIN books bk ON b.book_id = bk.id
@@ -563,6 +644,7 @@ def borrow_history():
             """
         ).fetchall()
         return [dict(r) for r in rows]
+
 
 # ============================================================
 # Activity log
@@ -615,5 +697,226 @@ def get_activity(limit=200):
         except Exception:
             return []
 
-        
+# ============================================================
+# Overdue fines
+# ============================================================
+
+FINE_PER_DAY = 5  # rupees per day late
+
+
+def compute_fine(due_date, on_date=None, fine_per_day=FINE_PER_DAY):
+    """Fine owed for a loan due on `due_date`, as of `on_date`.
+
+    Returns (days_overdue, fine_amount). Both are 0 when not late.
+    """
+    from datetime import datetime
+
+    if not due_date:
+        return 0, 0
+    try:
+        due = datetime.fromisoformat(str(due_date))
+    except ValueError:
+        return 0, 0
+
+    now = on_date or datetime.now()
+    if now <= due:
+        return 0, 0
+
+    days = math.ceil((now - due).total_seconds() / 86400)
+    return days, days * fine_per_day
+
+
+def overdue_summary():
+    """All overdue loans with days late and fine owed (oldest overdue first)."""
+    with closing(get_connection()) as conn:
+        rows = conn.execute(
+            """
+            SELECT s.name, s.roll_number, bk.title, b.due_date
+            FROM borrows b
+            JOIN students s ON s.id = b.student_id
+            JOIN books bk ON bk.id = b.book_id
+            WHERE b.status = 'borrowed'
+            ORDER BY b.due_date ASC
+            """
+        ).fetchall()
+
+    overdue = []
+    for r in rows:
+        d = dict(r)
+        days, fine = compute_fine(d["due_date"])
+        if days > 0:
+            d["days_overdue"] = days
+            d["fine"] = fine
+            overdue.append(d)
+    return overdue
+
+def reset_all_data():
+    """DEV ONLY - wipes all data. Never call from production UI."""
+    with closing(get_connection()) as conn:
+        for table in ["borrows", "books", "students", "categories", "activity_log"]:
+            try:
+                conn.execute("DELETE FROM " + table)
+            except Exception as exc:
+                msg = str(exc).lower()
+                if "no such table" not in msg:
+                    print("Skipping " + table + ": " + str(exc))
+        try:
+            conn.execute("DELETE FROM sqlite_sequence")
+        except Exception:
+            pass
+        conn.commit()
+
+# ============================================================
+# Students (auth)
+# ============================================================
+
+def get_student_by_roll(roll_number):
+    with closing(get_connection()) as conn:
+        row = conn.execute(
+            "SELECT id, name, email, roll_number FROM students WHERE roll_number = ?",
+            ((roll_number or "").strip().upper(),),
+        ).fetchone()
+        return dict(row) if row else None
+
+
+def list_students(limit=500):
+    with closing(get_connection()) as conn:
+        rows = conn.execute(
+            """SELECT s.id, s.name, s.email, s.roll_number,
+                      (SELECT COUNT(*) FROM borrows b
+                       WHERE b.student_id = s.id AND b.status = 'borrowed') AS active_loans
+               FROM students s
+               ORDER BY s.name COLLATE NOCASE
+               LIMIT ?""",
+            (limit,),
+        ).fetchall()
+        return [dict(r) for r in rows]
     
+def get_students_for_reminder(days_threshold=2):
+    """
+    Fetch students who have books overdue OR due within `days_threshold` days.
+    Returns a list of dicts.
+    """
+    from datetime import datetime, timedelta
+    
+    target_date = (datetime.now() + timedelta(days=days_threshold)).isoformat()
+    
+    with closing(get_connection()) as conn:
+        rows = conn.execute(
+            """
+            SELECT s.name, s.email, s.roll_number, bk.title, b.due_date, b.status
+            FROM borrows b
+            JOIN students s ON b.student_id = s.id
+            JOIN books bk ON b.book_id = bk.id
+            WHERE b.status = 'borrowed' 
+              AND b.due_date <= ?
+            ORDER BY b.due_date ASC
+            """,
+            (target_date,)
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+def delete_student(student_id):
+    """Delete a student and their borrow history. Fails if they have active loans."""
+    with closing(get_connection()) as conn:
+        # 1. Check for active loans first
+        active = conn.execute(
+            "SELECT COUNT(*) FROM borrows WHERE student_id = ? AND status = 'borrowed'", 
+            (student_id,)
+        ).fetchone()[0]
+        
+        if active > 0:
+            return False, "Cannot delete: This student still has books borrowed."
+            
+        # 2. Delete their borrow history (past records)
+        conn.execute("DELETE FROM borrows WHERE student_id = ?", (student_id,))
+        
+        # 3. Delete the student
+        conn.execute("DELETE FROM students WHERE id = ?", (student_id,))
+        conn.commit()
+        
+        return True, "Student and their history deleted successfully."
+
+# ============================================================
+# Reservations
+# ============================================================
+
+def reserve_book(student_id, book_id):
+    with closing(get_connection()) as conn:
+        # 1. Ensure the table exists (just in case the Dev Tool reset missed it)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS reservations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                student_id INTEGER NOT NULL,
+                book_id INTEGER NOT NULL,
+                reserve_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                status TEXT DEFAULT 'pending'
+            )
+        """)
+        
+        # 2. Check if already reserved
+        existing = conn.execute(
+            "SELECT id FROM reservations WHERE student_id = ? AND book_id = ? AND status = 'pending'",
+            (student_id, book_id)
+        ).fetchone()
+        if existing:
+            return False, "You have already reserved this book."
+            
+        # 3. Insert the reservation
+        conn.execute(
+            "INSERT INTO reservations (student_id, book_id) VALUES (?, ?)",
+            (student_id, book_id)
+        )
+        conn.commit()
+        return True, "✅ Book reserved! You will be notified when it is available."
+
+def get_reservations(book_id=None):
+    """Get pending reservations. If book_id is provided, filter by that book."""
+    sql = """
+        SELECT r.id, s.name, s.roll_number, bk.title, r.reserve_date
+        FROM reservations r
+        JOIN students s ON r.student_id = s.id
+        JOIN books bk ON r.book_id = bk.id
+        WHERE r.status = 'pending'
+    """
+    params = []
+    if book_id:
+        sql += " AND r.book_id = ?"
+        params.append(book_id)
+    sql += " ORDER BY r.reserve_date ASC"
+    
+    with closing(get_connection()) as conn:
+        return [dict(row) for row in conn.execute(sql, tuple(params)).fetchall()]
+
+def cancel_reservation(reservation_id):
+    with closing(get_connection()) as conn:
+        conn.execute("UPDATE reservations SET status = 'cancelled' WHERE id = ?", (reservation_id,))
+        conn.commit()
+        return True, "Reservation cancelled."
+
+def get_admin_dashboard_stats():
+    """Fetch key metrics for the Admin Dashboard."""
+    with closing(get_connection()) as conn:
+        # 1. Active Loans
+        active_loans = conn.execute("SELECT COUNT(*) FROM borrows WHERE status = 'borrowed'").fetchone()[0]
+        
+        # 2. Overdue Books
+        today = datetime.now().isoformat()
+        overdue = conn.execute("SELECT COUNT(*) FROM borrows WHERE status = 'borrowed' AND due_date < ?", (today,)).fetchone()[0]
+        
+        # 3. Pending Fines
+        unpaid_fines = conn.execute("SELECT COALESCE(SUM(fine_amount), 0) FROM borrows WHERE status = 'returned' AND fine_paid = 0").fetchone()[0]
+        
+        # 4. Active Reservations
+        reservations = conn.execute("SELECT COUNT(*) FROM reservations WHERE status = 'pending'").fetchone()[0]
+        
+        # 5. Total Students
+        students = conn.execute("SELECT COUNT(*) FROM students").fetchone()[0]
+        
+    return {
+        "active_loans": active_loans,
+        "overdue": overdue,
+        "unpaid_fines": unpaid_fines,
+        "reservations": reservations,
+        "students": students
+    }

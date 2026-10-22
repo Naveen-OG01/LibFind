@@ -41,26 +41,57 @@ def _admin_screen():
         st.session_state.admin_logged_in = False
         st.rerun()
 
-    tab_add, tab_edit, tab_cat, tab_bulk, tab_log = st.tabs(
-        [
-            "➕ Add Book",
-            "✏️ Edit / Delete Book",
-            "🏷️ Categories",
-            "📄 Bulk Import",
-            "📋 Activity Log",
-        ]
-    )
-    with tab_add:
-        _add_book_tab()
-    with tab_edit:
-        _edit_delete_book_tab()
-    with tab_cat:
-        _categories_tab()
-    with tab_bulk:
-        _bulk_import_tab()
-    with tab_log:
-        _activity_tab()
+    # Check if dashboard sent us to a specific tab
+    if "admin_tab" not in st.session_state:
+        st.session_state.admin_tab = "➕ Add Book"
 
+    # If URL params exist, update the session state
+       # If URL params exist, update the session state
+    if "tab" in st.query_params:
+        tab_map = {
+            "add": "➕ Add Book",
+            "edit": "✏️ Edit / Delete Book",
+            "cat": "🏷️ Categories",
+            "bulk": "📄 Bulk Import",
+            "students": "👥 Students",
+            "notify": "✉️ Notifications",
+            "log": "📋 Activity Log"
+        }
+        target = st.query_params["tab"]
+        if target in tab_map:
+            st.session_state.admin_tab = tab_map[target]
+        
+        # Clean up the URL immediately
+        del st.query_params["tab"] 
+
+    # The main navigation for admin
+    tabs = [
+        "➕ Add Book",
+        "✏️ Edit / Delete Book",
+        "🏷️ Categories",
+        "📄 Bulk Import",
+        "👥 Students",
+        "✉️ Notifications",
+        "📋 Activity Log"
+    ]
+    
+    active_tab = st.radio("Select Action", tabs, key="admin_tab", horizontal=True, label_visibility="collapsed")
+    st.divider()
+
+    if active_tab == "➕ Add Book":
+        _add_book_tab()
+    elif active_tab == "✏️ Edit / Delete Book":
+        _edit_delete_book_tab()
+    elif active_tab == "🏷️ Categories":
+        _categories_tab()
+    elif active_tab == "📄 Bulk Import":
+        _bulk_import_tab()
+    elif active_tab == "👥 Students":
+        _students_tab()
+    elif active_tab == "✉️ Notifications":
+        _notifications_tab()
+    elif active_tab == "📋 Activity Log":
+        _activity_tab()
 
 def _add_book_tab():
     categories = db.category_names()
@@ -71,7 +102,7 @@ def _add_book_tab():
         author = col2.text_input("Author *")
         col3, col4 = st.columns(2)
         isbn = col3.text_input("ISBN")
-        category = col4.selectbox("Category", categories)
+        category = col4.text_input("Category", placeholder="e.g. Computer Science")
         col5, col6 = st.columns(2)
         publisher = col5.text_input("Publisher")
         year = col6.number_input("Publication year", 0, 2100, 2024, 1)
@@ -108,33 +139,23 @@ def _edit_delete_book_tab():
         st.info("No books in the catalogue yet.")
         return
 
-    options = {
-        f"#{b['id']} — {b['title']} ({b['author']})": b["id"] for b in books
-    }
+    options = {f"#{b['id']} — {b['title']} ({b['author']})": b["id"] for b in books}
     book_id = options[st.selectbox("Select a book", list(options.keys()))]
     book = db.get_book(book_id)
     if not book:
         st.warning("Book not found.")
         return
 
-    # Cover section — file uploader MUST stay outside the form
     st.subheader("📚 Book Cover")
     if book.get("cover_image"):
         st.image(book["cover_image"], width=150, caption="Current cover")
     else:
         st.caption("📚 No cover available")
 
-    uploaded_cover = st.file_uploader(
-        "Upload new cover image",
-        type=["png", "jpg", "jpeg"],
-        key=f"cover_upload_{book_id}",
-    )
+    uploaded_cover = st.file_uploader("Upload new cover image", type=["png", "jpg", "jpeg"], key=f"cover_upload_{book_id}")
 
     categories = db.category_names()
-    default_cat_idx = (
-        categories.index(book["category_name"])
-        if book["category_name"] in categories else 0
-    )
+    default_cat_idx = (categories.index(book["category_name"]) if book["category_name"] in categories else 0)
 
     with st.form("edit_book_form"):
         st.subheader("Update book details")
@@ -146,13 +167,10 @@ def _edit_delete_book_tab():
         category = col4.selectbox("Category", categories, index=default_cat_idx)
         col5, col6 = st.columns(2)
         publisher = col5.text_input("Publisher", value=book["publisher"] or "")
-        year = col6.number_input("Publication year", 0, 2100,
-                                 int(book["publication_year"] or 2024), 1)
+        year = col6.number_input("Publication year", 0, 2100, int(book["publication_year"] or 2024), 1)
         col7, col8 = st.columns(2)
-        total_copies = col7.number_input("Total copies", 1, 10000,
-                                         int(book["total_copies"]), 1)
-        available_copies = col8.number_input("Available copies", 0, 10000,
-                                             int(book["available_copies"]), 1)
+        total_copies = col7.number_input("Total copies", 1, 10000, int(book["total_copies"]), 1)
+        available_copies = col8.number_input("Available copies", 0, 10000, int(book["available_copies"]), 1)
         col9, col10 = st.columns(2)
         shelf = col9.text_input("Shelf", value=book["shelf"] or "")
         rack = col10.text_input("Rack", value=book["rack"] or "")
@@ -203,10 +221,7 @@ def _categories_tab():
     st.divider()
     cats = db.list_categories()
     if cats:
-        st.dataframe(
-            [{"Category": c["name"], "Books": c["book_count"]} for c in cats],
-            use_container_width=True, hide_index=True,
-        )
+        st.dataframe([{"Category": c["name"], "Books": c["book_count"]} for c in cats], use_container_width=True, hide_index=True)
         empty = [c["name"] for c in cats if c["book_count"] == 0]
         if empty:
             target = st.selectbox("Delete empty category", empty)
@@ -221,18 +236,8 @@ def _categories_tab():
 
 def _bulk_import_tab():
     st.subheader("Bulk add books from a CSV file")
-    st.caption(
-        "Header row required. Columns: title, author, isbn, category, "
-        "publisher, year, total_copies, shelf, rack "
-        "(only title and author are mandatory)."
-    )
-    st.code(
-        "title,author,isbn,category,publisher,year,total_copies,shelf,rack\n"
-        "Clean Code,Robert C. Martin,9780132350884,"
-        "Software Engineering,Prentice Hall,2008,4,B-1,R2",
-        language="csv",
-    )
-
+    st.caption("Header row required. Columns: title, author, isbn, category, publisher, year, total_copies, shelf, rack (only title and author are mandatory).")
+    
     uploaded = st.file_uploader("Choose a CSV file", type=["csv"], key="bulk_csv")
     if uploaded is None:
         return
@@ -252,11 +257,7 @@ def _bulk_import_tab():
     if st.button("📥 Import books", type="primary", key="bulk_import_btn"):
         added, errors = 0, []
         for i, raw in enumerate(reader, start=2):
-            row = {
-                (k or "").strip().lower(): (v or "").strip()
-                for k, v in raw.items()
-                if k is not None
-            }
+            row = {(k or "").strip().lower(): (v or "").strip() for k, v in raw.items() if k is not None}
             if not row.get("title"):
                 continue
             try:
@@ -280,6 +281,133 @@ def _bulk_import_tab():
             st.warning(f"{len(errors)} row(s) skipped: " + "; ".join(errors[:8]))
 
 
+def _students_tab():
+    st.subheader("👥 Registered Students")
+    
+    students = db.list_students()
+    
+    if not students:
+        st.info("No students registered yet.")
+        return # Stop here if there are no students
+
+    # 1. Show the table
+    import pandas as pd
+    df = pd.DataFrame(students).rename(columns={
+        "id": "ID",
+        "name": "Name",
+        "email": "Email",
+        "roll_number": "Roll No",
+        "active_loans": "Active Borrows",
+    })
+    st.dataframe(df, use_container_width=True, hide_index=True)
+    st.caption(f"Total: {len(students)} students")
+
+    # 2. Delete Student Section
+    st.divider()
+    st.subheader("🗑️ Delete Student")
+    st.caption("Note: You cannot delete a student who currently has books borrowed.")
+    
+    options = {f"{s['name']} ({s['roll_number']})": s["id"] for s in students}
+    selected_student = st.selectbox("Select student to delete", list(options.keys()))
+    
+    if st.button("Delete Student", type="primary"):
+        ok, msg = db.delete_student(options[selected_student])
+        if ok:
+            st.success(msg)
+            st.rerun()
+        else:
+            st.error(msg)
+
+    # 3. Reset Password Section
+    st.divider()
+    st.subheader("🔑 Reset Student Password")
+    st.caption("Use this if a student forgets their password.")
+    
+    with st.form("admin_reset_password_form"):
+        col1, col2 = st.columns(2)
+        roll = col1.text_input("Student Roll Number")
+        new_pwd = col2.text_input("New Password (min 6 chars)", type="password")
+        
+        submitted = st.form_submit_button("Reset Password", type="primary")
+        
+    if submitted:
+        from libfind import auth
+        ok, msg = auth.admin_reset_password(roll, new_pwd)
+        if ok:
+            st.success(msg)
+        else:
+            st.error(msg)
+
+    st.divider()
+    st.subheader("🔖 Active Book Reservations")
+    res = db.get_reservations()
+    if res:
+        import pandas as pd
+        rdf = pd.DataFrame(res).rename(columns={
+            "id": "ID", "name": "Student", "roll_number": "Roll No", "title": "Book", "reserve_date": "Date"
+        })
+        st.dataframe(rdf[["Student", "Roll No", "Book", "Date"]], use_container_width=True, hide_index=True)
+    else:
+        st.info("No active reservations.")
+
+         
+def _notifications_tab():
+    st.subheader("✉️ Email Notifications")
+    st.caption("Send automated reminders to students whose books are due soon or overdue.")
+    
+    days = st.number_input("Look-ahead days (include books due within X days)", min_value=0, max_value=30, value=2)
+    
+    if st.button("🔍 Preview Emails", type="secondary"):
+        st.session_state["preview_emails"] = db.get_students_for_reminder(days)
+    
+    emails = st.session_state.get("preview_emails", [])
+    
+    if not emails:
+        st.info("No books are due soon or overdue. All clear! 🎉")
+        return
+        
+    st.write(f"Found **{len(emails)}** books that need attention.")
+    
+    import pandas as pd
+    df = pd.DataFrame(emails)[["name", "email", "title", "due_date"]]
+    df["due_date"] = df["due_date"].astype(str).str[:10]
+    st.dataframe(df, use_container_width=True, hide_index=True)
+    
+    st.divider()
+    
+    if st.button("🚀 Send All Emails", type="primary"):
+        from libfind import emailer
+        import datetime
+        
+        success_count = 0
+        errors = []
+        
+        progress_bar = st.progress(0)
+        
+        for i, row in enumerate(emails):
+            due_dt = datetime.datetime.fromisoformat(str(row["due_date"]))
+            is_overdue = due_dt < datetime.datetime.now()
+            
+            ok, msg = emailer.send_reminder_email(
+                row["email"], row["name"], row["title"], row["due_date"], is_overdue
+            )
+            
+            if ok:
+                success_count += 1
+            else:
+                errors.append(msg)
+                
+            progress_bar.progress((i + 1) / len(emails))
+            
+        if success_count > 0:
+            st.success(f"✅ Successfully sent {success_count} emails!")
+        
+        if errors:
+            st.error("Some emails failed to send:")
+            for err in errors:
+                st.write(f"- {err}")
+
+
 def _activity_tab():
     st.subheader("📋 Activity Log")
     st.caption("Latest borrow, return and renew events (most recent first).")
@@ -290,11 +418,7 @@ def _activity_tab():
         return
 
     st.dataframe(
-        [
-            {"When": e["created_at"], "Action": e["action"], "Details": e["details"]}
-            for e in entries
-        ],
+        [{"When": e["created_at"], "Action": e["action"], "Details": e["details"]} for e in entries],
         use_container_width=True,
         hide_index=True,
     )
-    

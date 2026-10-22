@@ -4,9 +4,26 @@ import streamlit as st
 from libfind import db, recommend, search
 
 
+def _handle_reserve_callback(student_id, book_id):
+    ok, msg = db.reserve_book(student_id, book_id)
+    
+    # Save the message to session_state so it survives the reload
+    if ok:
+        st.session_state["toast_msg"] = msg
+        st.session_state["toast_icon"] = "✅"
+    else:
+        st.session_state["toast_msg"] = msg
+        st.session_state["toast_icon"] = "⚠️"
+
 def render():
     st.title("🔎 Student Book Search")
     st.caption("Search. Locate. Read.")
+
+
+    if "toast_msg" in st.session_state:
+        st.toast(st.session_state["toast_msg"], icon=st.session_state["toast_icon"])
+        del st.session_state["toast_msg"]
+        del st.session_state["toast_icon"]
 
     categories = ["All"] + db.category_names()
 
@@ -66,7 +83,13 @@ def render():
         ]
 
     st.subheader(f"Results — {len(results)} book(s) found")
-
+        # Show any success/error message from the reserve button
+    if "res_msg" in st.session_state:
+        st.success(st.session_state["res_msg"])
+        del st.session_state["res_msg"] # Clear it so it doesn't show forever
+        # Show any success/error message from the callback
+        
+    st.subheader(f"Results — {len(results)} book(s) found")
     if not results:
         if total_matches:
             st.warning(
@@ -85,8 +108,8 @@ def render():
 
         if suggestions:
             st.success("Did you mean one of these titles?")
-            for book in suggestions:
-                _book_card(book)
+            for i, book in enumerate(suggestions):
+                _book_card(book, index=f"fuzzy_{i}")
         else:
             st.info(
                 "No close title match either. Try fewer keywords, "
@@ -94,8 +117,8 @@ def render():
             )
         return
 
-    for book in results[:50]:
-        _book_card(book)
+    for i, book in enumerate(results[:50]):
+        _book_card(book, index=i)
 
     # Similar-book suggestions using the result set.
     st.markdown("---")
@@ -104,18 +127,17 @@ def render():
     seen = {book["id"] for book in results}
     shown = False
 
-    for book in results[:5]:
-        for similar in recommend.similar_books(book["id"], limit=2):
+    for i, book in enumerate(results[:5]):
+        for j, similar in enumerate(recommend.similar_books(book["id"], limit=2)):
             if similar["id"] not in seen:
-                _book_card(similar)
+                _book_card(similar, index=f"sim_{i}_{j}")
                 seen.add(similar["id"])
                 shown = True
-
     if not shown:
         st.caption("No additional similar titles available right now.")
 
 
-def _book_card(book):
+def _book_card(book, index=0):
     col1, col2 = st.columns([1, 3])
 
     with col1:
@@ -135,7 +157,17 @@ def _book_card(book):
             st.success(f"✅ Available ({book['available_copies']} copies)")
         else:
             st.error("❌ Checked out")
-
-        if book.get("shelf") or book.get("rack"):
-            st.caption(f"📍 Shelf: {book.get('shelf', 'N/A')} | Rack: {book.get('rack', 'N/A')}")
+            student = st.session_state.get("student")
             
+            unique_key = f"reserve_{book['id']}_{index}"
+            
+            if student:
+                # Using on_click to guarantee it runs
+                st.button(
+                    "🔖 Reserve this book", 
+                    key=unique_key,
+                    on_click=_handle_reserve_callback,
+                    args=(student["id"], book["id"])
+                )
+            else:
+                st.caption("🔐 Log in to reserve this book.")

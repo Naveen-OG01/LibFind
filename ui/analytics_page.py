@@ -4,10 +4,30 @@ import plotly.express as px
 import streamlit as st
 
 from libfind import analytics as core
-
+from libfind import db
 
 def render():
     st.title("📊 Library Analytics")
+    st.title("📊 Library Analytics")
+    st.caption("Live reports from the LibFind catalogue.")
+    
+    # ---- NEW: UNPAID FINES SUMMARY ----
+    from libfind import db as _db
+    from contextlib import closing
+    
+    with closing(_db.get_connection()) as conn:
+        unpaid = conn.execute(
+            """SELECT SUM(fine_amount) as total, COUNT(*) as count 
+               FROM borrows 
+               WHERE status = 'returned' AND fine_paid = 0 AND fine_amount > 0"""
+        ).fetchone()
+        
+    if unpaid and unpaid["count"] > 0:
+        st.error(f"⚠️ **Pending Fines:** {unpaid['count']} students owe a total of **₹{unpaid['total']}**. Check the 'View Records' tab to collect.")
+    else:
+        st.success("✅ All previous fines have been collected. No pending payments.")
+    st.divider()
+    # -----------------------------------
     st.caption("Live reports from the LibFind catalogue.")
     st.subheader("⚠️ Low-availability books")
 
@@ -18,6 +38,42 @@ def render():
     col2.metric("Total Copies", summary["total_copies"])
     col3.metric("Available Copies", summary["available_copies"])
     col4.metric("Availability", f'{summary["percent_available"]:.1f}%')
+
+    st.subheader("⚠️ Overdue loans & fines")
+    overdue = db.overdue_summary()
+    if overdue:
+        total_fine = sum(o["fine"] for o in overdue)
+        c1, c2 = st.columns(2)
+        c1.metric("Overdue loans", len(overdue))
+        c2.metric("Fines owed", f"₹{total_fine}")
+
+        odf = pd.DataFrame(overdue)
+        fig_o = px.bar(
+            odf,
+            x="fine",
+            y="title",
+            orientation="h",
+            color="days_overdue",
+            color_continuous_scale="Reds",
+            title="Fines by book",
+            labels={"fine": "Fine (₹)", "title": "Book", "days_overdue": "Days late"},
+        )
+        st.plotly_chart(fig_o, use_container_width=True)
+        st.dataframe(
+            odf[["name", "roll_number", "title", "due_date", "days_overdue", "fine"]]
+            .rename(columns={
+                "name": "Student",
+                "roll_number": "Roll No",
+                "title": "Book",
+                "due_date": "Due",
+                "days_overdue": "Days late",
+                "fine": "Fine (₹)",
+            }),
+            use_container_width=True,
+            hide_index=True,
+        )
+    else:
+        st.info("No overdue loans — all books are on time. 🎉")
 
     st.subheader("Category-wise copies")
     cat_data = core.category_stats()

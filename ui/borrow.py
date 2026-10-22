@@ -1,6 +1,7 @@
 """Book borrowing / returning UI."""
 import math
 from datetime import datetime
+from contextlib import closing 
 
 import pandas as pd
 import streamlit as st
@@ -12,24 +13,26 @@ def borrow_page():
     st.title("📚 Book Borrowing")
     is_admin = st.session_state.get("admin_logged_in", False)
 
-    tab1, tab2, tab3, tab4 = st.tabs(
-        ["Borrow Book", "My Books", "Return / Renew", "View Records"]
+    # Create 5 tabs now
+    tab1, tab2, tab3, tab4, tab5 = st.tabs(
+        ["Borrow Book", "My Books", "My Reservations", "Return / Renew", "View Records"]
     )
     with tab1:
         _borrow_tab()
     with tab2:
         _my_books_tab()
     with tab3:
+        _my_reservations_tab() # New Tab
+    with tab4:
         if is_admin:
             _return_tab()
         else:
             _admin_required("Return / Renew", "return_renew")
-    with tab4:
+    with tab5:
         if is_admin:
             _records_tab()
         else:
             _admin_required("View Records", "view_records")
-
 
 def _admin_required(page_name, slug):
     """Login prompt shown when an admin-only tab is opened by a visitor."""
@@ -74,25 +77,53 @@ def _due_info(due_date):
 # ---------- tabs ----------
 
 def _borrow_tab():
-    slip = st.session_state.pop("issue_slip", None)
-    if slip:
-        st.session_state["borrow_name"] = ""
-        st.session_state["borrow_email"] = ""
-        st.session_state["borrow_roll"] = ""
-        with st.container(border=True):
-            st.markdown("### 🧾 Issue Slip")
-            st.markdown(f"**Student:** {slip['name']}  \n**Roll:** {slip['roll']}")
-            st.markdown(f"**Book:** {slip['book']}")
-            st.markdown(f"**Borrowed on:** {slip['borrowed']}")
-            st.markdown(f"**Return by:** {slip['due']}")
-            st.caption("Press Ctrl+P to print this slip.")
-        st.divider()
-
     st.subheader("Borrow a Book")
 
-    student_name = st.text_input("Student Name", key="borrow_name")
-    student_email = st.text_input("Email", key="borrow_email")
-    roll_number = st.text_input("Roll Number", key="borrow_roll")
+    student = st.session_state.get("student")
+
+    if not student:
+        st.info("🔐 Please log in first to borrow books.")
+
+        tab_login, tab_register = st.tabs(["Login", "Register"])
+
+        with tab_login:
+            with st.form("student_login_form"):
+                roll = st.text_input("Roll Number")
+                pwd = st.text_input("Password", type="password")
+                submit = st.form_submit_button("Log in", use_container_width=True)
+            if submit:
+                from libfind import auth
+                ok, result = auth.login_student(roll, pwd)
+                if ok:
+                    st.session_state.student = result
+                    st.success(f"Welcome, {result['name']}!")
+                    st.rerun()
+                else:
+                    st.error(result)
+
+        with tab_register:
+            with st.form("student_register_form"):
+                name = st.text_input("Full Name")
+                email = st.text_input("Email")
+                roll = st.text_input("Roll Number")
+                pwd = st.text_input("Password (min 6 chars)", type="password")
+                pwd2 = st.text_input("Confirm Password", type="password")
+                submit = st.form_submit_button("Register", use_container_width=True)
+            if submit:
+                if pwd != pwd2:
+                    st.error("Passwords do not match.")
+                else:
+                    from libfind import auth
+                    ok, msg = auth.register_student(name, email, roll, pwd)
+                    if ok:
+                        st.success(msg + " Now switch to the Login tab.")
+                    else:
+                        st.error(msg)
+
+        return
+
+    # ---- Logged in: show borrow form ----
+    st.success(f"👤 {student['name']} — Roll {student['roll_number']}")
 
     books = db.get_all_books()
     if not books:
@@ -107,75 +138,43 @@ def _borrow_tab():
         "Loan Period (days)", min_value=1, max_value=30, value=14, key="borrow_days"
     )
 
-    st.caption(
-        f"Rules: max {db.MAX_BOOKS_PER_STUDENT} books per student · "
-        f"{db.MAX_RENEWALS} renewals allowed"
-    )
-
     if st.button("Borrow Book", key="borrow_btn"):
-        missing = [
-            label
-            for label, value in [
-                ("Student Name", student_name),
-                ("Email", student_email),
-                ("Roll Number", roll_number),
-                ("Select Book", selected_book),
-            ]
-            if not (value or "").strip()
-        ]
-        if missing:
-            st.error("Please fill: " + ", ".join(missing))
-            return
-
         ok, result = db.borrow_book(
-            student_name, student_email, roll_number,
+            student["name"], student["email"], student["roll_number"],
             book_options[selected_book], due_days,
         )
         if ok:
-            st.session_state["issue_slip"] = {
-                "name": student_name.strip(),
-                "roll": roll_number.strip(),
-                "book": selected_book,
-                "borrowed": datetime.now().strftime("%Y-%m-%d"),
-                "due": str(result)[:10],
-            }
-            st.rerun()
+            st.success(f"✅ Borrowed! Due {str(result)[:10]}")
+            st.balloons()
         else:
             st.error(result)
+
+    st.divider()
+    if st.button("Log out", key="student_logout"):
+        st.session_state.student = None
+        st.rerun()
 
 
 def _my_books_tab():
     st.subheader("My Books")
-    st.caption("Students can check their borrowed books and due dates here.")
-
-    roll = st.text_input("Roll Number", key="mybooks_roll")
-    if st.button("Show my books", key="mybooks_btn"):
-        if roll.strip():
-            st.session_state["mybooks_query"] = roll.strip()
-        else:
-            st.error("Enter a roll number.")
-
-    query = st.session_state.get("mybooks_query")
-    if not query:
+    student = st.session_state.get("student")
+    if not student:
+        st.info("🔐 Log in on the 'Borrow Book' tab to see your books.")
         return
 
-    loans = db.active_loans(query)
+    loans = db.active_loans(student["roll_number"])
     if not loans:
-        st.info(f"No active borrows for roll number {query}.")
-        return
+        st.info("You have no active borrows.")
+    else:
+        for loan in loans:
+            overdue, days = _due_info(loan["due_date"])
+            if overdue:
+                st.error(f"**{loan['title']}** — OVERDUE by {days}d (was due {str(loan['due_date'])[:10]})")
+            else:
+                st.warning(f"**{loan['title']}** — due {str(loan['due_date'])[:10]}")
 
-    st.caption(f"{len(loans)} active borrow(s) for {query}")
-    for loan in loans:
-        overdue, days = _due_info(loan["due_date"])
-        if overdue:
-            st.error(
-                f"**{loan['title']}** — OVERDUE by {days} day(s) "
-                f"(was due {str(loan['due_date'])[:10]})"
-            )
-        else:
-            st.warning(f"**{loan['title']}** — due {str(loan['due_date'])[:10]}")
-
-
+    
+    
 def _return_tab():
     st.subheader("Return / Renew Books")
 
@@ -195,17 +194,28 @@ def _return_tab():
             st.write(f"Borrowed: {loan['borrow_date']}")
             st.write(f"Due: {str(loan['due_date'])[:19]}")
             st.write(f"Renewals used: {loan['renewals'] or 0} / {db.MAX_RENEWALS}")
+            
+            fine_paid = False
             if overdue:
-                st.error(f"Overdue by {days} day(s) — collect immediately.")
+                fine = days * db.FINE_PER_DAY
+                st.error(f"Overdue by {days} day(s) — Fine owed: ₹{fine}")
+                fine_paid = st.checkbox(
+                    f"✅ Mark ₹{fine} fine as PAID", 
+                    key=f"paid_{loan['id']}"
+                )
+            else:
+                st.success("On time — no fine.")
 
             col1, col2 = st.columns(2)
+            
             if col1.button("↩ Mark Returned", key=f"return_{loan['id']}"):
-                ok, msg = db.return_book(loan["id"])
+                ok, msg = db.return_book(loan["id"], fine_paid=fine_paid)
                 if ok:
                     st.success(msg)
                     st.rerun()
                 else:
                     st.error(msg)
+                    
             if col2.button("🔄 Renew (+14 days)", key=f"renew_{loan['id']}"):
                 ok, msg = db.renew_book(loan["id"])
                 if ok:
@@ -231,15 +241,23 @@ def _records_tab():
         else:
             status = r["status"]
 
+        fine_display = ""
+        if r.get("fine_amount") and r["fine_amount"] > 0:
+            if r["fine_paid"]:
+                fine_display = f"₹{r['fine_amount']} (Paid)"
+            else:
+                fine_display = f"₹{r['fine_amount']} (UNPAID)"
+
         rows.append(
             {
                 "Student": r["name"],
                 "Roll No": r["roll_number"],
                 "Book": r["title"],
-                "Borrowed": r["borrow_date"],
-                "Due": str(r["due_date"])[:19],
-                "Returned": r["return_date"],
+                "Borrowed": str(r["borrow_date"])[:10],
+                "Due": str(r["due_date"])[:10],
+                "Returned": str(r["return_date"])[:10] if r["return_date"] else "",
                 "Status": status,
+                "Fine": fine_display,
             }
         )
 
@@ -252,4 +270,26 @@ def _records_tab():
         file_name="libfind_borrow_records.csv",
         mime="text/csv",
     )
-    
+
+def _my_reservations_tab():
+    st.subheader("🔖 My Reservations")
+    student = st.session_state.get("student")
+    if not student:
+        st.info("🔐 Log in on the 'Borrow Book' tab to see your reservations.")
+        return
+
+    with closing(db.get_connection()) as conn:
+        res = conn.execute(
+            """
+            SELECT bk.title, r.reserve_date 
+            FROM reservations r
+            JOIN books bk ON r.book_id = bk.id
+            WHERE r.student_id = ? AND r.status = 'pending'
+            """, (student["id"],)
+        ).fetchall()
+        
+    if not res:
+        st.info("You have no active book reservations.")
+    else:
+        for r in res:
+            st.info(f"**{r['title']}** — Reserved on {str(r['reserve_date'])[:10]}. We will notify you when it's available!")

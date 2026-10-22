@@ -1,0 +1,4 @@
+title,author,isbn,category,publisher,year,total_copies,shelf,rack
+Test Book Alpha,John Doe,9781111111111,Test Category,Test Publisher,2024,3,T-1,R1
+Test Book Beta,Jane Smith,9782222222222,Test Category,Test Publisher,2024,2,T-1,R2
+Test Book Gamma,Bob Johnson,9783333333333,Test Category,Test Publisher,2024,1,T-2,R1
