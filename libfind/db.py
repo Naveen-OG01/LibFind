@@ -217,11 +217,35 @@ def init_db():
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     with closing(get_connection()) as conn:
         conn.executescript(SCHEMA)
-        try:
-            conn.execute("ALTER TABLE books ADD COLUMN cover_image TEXT")
-        except Exception as exc:
-            if "duplicate column" not in str(exc).lower():
-                raise
+        
+        # Auto-migrate missing columns for Turso/Local
+        migrations = [
+            "ALTER TABLE books ADD COLUMN cover_image TEXT",
+            "ALTER TABLE borrows ADD COLUMN renewals INTEGER DEFAULT 0",
+            "ALTER TABLE borrows ADD COLUMN fine_amount REAL DEFAULT 0",
+            "ALTER TABLE borrows ADD COLUMN fine_paid INTEGER DEFAULT 0",
+            """CREATE TABLE IF NOT EXISTS activity_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                action TEXT NOT NULL,
+                details TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )""",
+            """CREATE TABLE IF NOT EXISTS reservations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                student_id INTEGER NOT NULL,
+                book_id INTEGER NOT NULL,
+                reserve_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                status TEXT DEFAULT 'pending'
+            )"""
+        ]
+        
+        for sql in migrations:
+            try:
+                conn.execute(sql)
+            except Exception as exc:
+                if "duplicate column" not in str(exc).lower():
+                    pass # Ignore errors if column/table already exists
+        conn.commit()
 
 
 
