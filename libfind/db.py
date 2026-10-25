@@ -1004,3 +1004,76 @@ def bulk_import_students(student_list, default_password=None):
         conn.commit()
 
     return added, errors
+
+# ============================================================
+# Export Functions
+# ============================================================
+
+def export_full_inventory():
+    """Returns a CSV string of all books in the library."""
+    import csv
+    import io
+    
+    with closing(get_connection()) as conn:
+        rows = conn.execute("""
+            SELECT b.id, b.title, b.author, b.isbn, c.name AS category, 
+                   b.publisher, b.publication_year, b.total_copies, 
+                   b.available_copies, b.shelf, b.rack
+            FROM books b
+            LEFT JOIN categories c ON b.category_id = c.id
+            ORDER BY b.title
+        """).fetchall()
+        
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["Book ID", "Title", "Author", "ISBN", "Category", "Publisher", "Year", "Total Copies", "Available", "Shelf", "Rack"])
+    
+    for r in rows:
+        writer.writerow([r["id"], r["title"], r["author"], r["isbn"], r["category"], r["publisher"], r["publication_year"], r["total_copies"], r["available_copies"], r["shelf"], r["rack"]])
+        
+    return output.getvalue()
+
+def export_all_students():
+    """Returns a CSV string of all registered students."""
+    import csv
+    import io
+    
+    with closing(get_connection()) as conn:
+        rows = conn.execute("""
+            SELECT id, name, email, roll_number, created_at 
+            FROM students ORDER BY name
+        """).fetchall()
+        
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["Student ID", "Name", "Email", "Roll Number", "Registered On"])
+    
+    for r in rows:
+        writer.writerow([r["id"], r["name"], r["email"], r["roll_number"], r["created_at"]])
+        
+    return output.getvalue()
+
+def export_fine_report():
+    """Returns a CSV string of all overdue/unpaid fines."""
+    import csv
+    import io
+    
+    with closing(get_connection()) as conn:
+        rows = conn.execute("""
+            SELECT s.name, s.roll_number, bk.title, b.due_date, b.return_date, b.fine_amount, b.fine_paid
+            FROM borrows b
+            JOIN students s ON b.student_id = s.id
+            JOIN books bk ON b.book_id = bk.id
+            WHERE b.fine_amount > 0 OR b.status = 'borrowed'
+            ORDER BY b.fine_amount DESC
+        """).fetchall()
+        
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["Student Name", "Roll Number", "Book Title", "Due Date", "Return Date", "Fine Amount (₹)", "Status"])
+    
+    for r in rows:
+        status = "Paid" if r["fine_paid"] else ("Unpaid" if r["fine_amount"] > 0 else "None")
+        writer.writerow([r["name"], r["roll_number"], r["title"], str(r["due_date"])[:10], str(r["return_date"])[:10] if r["return_date"] else "", r["fine_amount"], status])
+        
+    return output.getvalue()

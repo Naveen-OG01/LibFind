@@ -55,6 +55,7 @@ def _admin_screen():
             "students": "👥 Students",
             "bulk_students": "🎓 Bulk Students",
             "notify": "✉️ Notifications",
+            "reports": "📥 Export Reports",
             "log": "📋 Activity Log"
         }
         target = st.query_params["tab"]
@@ -72,6 +73,7 @@ def _admin_screen():
         "👥 Students",
         "🎓 Bulk Students",
         "✉️ Notifications",
+        "📥 Export Reports",
         "📋 Activity Log"
     ]
     
@@ -93,6 +95,9 @@ def _admin_screen():
         _bulk_students_tab()
     elif active_tab == "✉️ Notifications":
         _notifications_tab()
+    elif active_tab == "📥 Export Reports":  # <--- ADD THIS
+        from ui.reports import render as reports_render
+        reports_render()
     elif active_tab == "📋 Activity Log":
         _activity_tab()
 
