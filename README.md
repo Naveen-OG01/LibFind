@@ -1,72 +1,27 @@
-# 📚 LibFind — Search. Locate. Read.
+# 📚 LibFind — Smart Library Management System
 
-A complete **Library Management System** for colleges, built with Streamlit.
-Students can search the catalogue, see book covers and shelf locations, and
-borrow books — while librarians manage inventory through a password-protected
-admin panel with live analytics.
+A complete cloud-hosted Library Management System built for colleges. LibFind allows students to search, locate, and reserve books, while giving librarians a powerful dashboard to manage circulation, fines, and inventory.
 
-**🔗 Live demo:** https://libfind-tjcrkygdzvp3tofec2gcfd.streamlit.app/
-
----
+**🔗 Live Demo:** [Insert your Streamlit Link Here]
 
 ## ✨ Features
-
-### 🔎 Student Search
-- Search by **title, author, ISBN, or category**
-- Fuzzy matching powered by `rapidfuzz`
-- Book cover images (Cloudinary CDN)
-- Copy availability + exact **shelf / rack location**
-- Similar-book recommendations based on category, author, year and title
-
-### 🛠 Admin Interface
-- Password-protected (`admin` / `admin123`)
-- Add, edit, and delete books
-- Upload book cover images
-- Manage categories (with safe deletion rules)
-
-### 📊 Library Analytics
-- Collection summary (titles, copies, availability %)
-- Category-wise copies chart (Plotly)
-- Top authors chart
-- Low-availability warnings
-
-### 📖 Book Borrowing
-- Register students (name, email, roll number)
-- Borrow with configurable loan period
-- Return books and auto-update availability
-- Full borrow history with due dates
-
----
-
-## 🖼 Screenshots
-
-| Student Search | Admin Interface |
-|---|---|
-| ![Search](screenshots/search.png) | ![Admin](screenshots/admin.png) |
-
-| Analytics | Borrowing |
-|---|---|
-| ![Analytics](screenshots/analytics.png) | ![Borrowing](screenshots/borrowing.png) |
-
----
+- **Student Portal:** Secure login, live book search, reserve checked-out books.
+- **Librarian Dashboard:** Live metrics, overdue alerts, and reservation tracking.
+- **Barcode Scanner:** Quick-checkout page for fast circulation.
+- **Bulk Import:** Upload `.csv` files to add thousands of books or students at once.
+- **Fine Management:** Automatically calculate ₹5/day fines and track payments.
+- **Automated Emails:** Send overdue alerts directly to student emails.
+- **Cloud Database:** Powered by Turso (SQLite) for permanent cloud storage.
 
 ## 🛠 Tech Stack
-
-| Layer | Technology |
-|---|---|
-| Frontend / UI | Streamlit |
-| Charts | Plotly Express |
-| Database | Turso (cloud SQLite via `libsql`) |
-| Fuzzy search | RapidFuzz |
-| Images | Cloudinary |
-| Local fallback | SQLite (`data/libfind.db`) |
-
----
+- **Frontend:** Streamlit
+- **Database:** Turso (Cloud SQLite), LibSQL
+- **Security:** PBKDF2 SHA-256 Password Hashing
+- **Charts:** Plotly Express
+- **Mailing:** Python `smtplib`
 
 ## 🚀 Run Locally
-
-```bash
-git clone https://github.com/Naveen-OG01/LibFind.git
-cd LibFind
-pip install -r requirements.txt
-streamlit run app.py
+1. Clone the repo: `git clone https://github.com/Naveen-OG01/LibFind.git`
+2. Install requirements: `pip install -r requirements.txt`
+3. Create `.streamlit/secrets.toml` and add your Turso/Gmail keys.
+4. Run the app: `streamlit run app.py`

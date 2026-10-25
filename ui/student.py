@@ -138,7 +138,8 @@ def render():
 
 
 def _book_card(book, index=0):
-    col1, col2 = st.columns([1, 3])
+    with st.container(border=True):
+        col1, col2 = st.columns([1, 3])
 
     with col1:
         if book.get("cover_image"):

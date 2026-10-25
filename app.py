@@ -9,6 +9,88 @@ st.set_page_config(
     layout="wide",
 )
 
+# ==========================================
+# 🎨 CUSTOM CSS FOR PREMIUM LOOK
+# ==========================================
+def local_css():
+    st.markdown("""
+        <style>
+        /* Main Background */
+        .stApp {
+            background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+            color: #e2e8f0;
+        }
+        
+        /* Sidebar Background */
+        [data-testid="stSidebar"] {
+            background-color: #0f172a;
+            border-right: 1px solid #334155;
+        }
+
+        /* Headers and Text */
+        h1, h2, h3 {
+            color: #38bdf8 !important;
+            font-family: 'Inter', sans-serif;
+        }
+        p, span, div {
+            font-family: 'Inter', sans-serif;
+        }
+
+        /* Buttons */
+        .stButton > button {
+            background: linear-gradient(90deg, #3b82f6 0%, #2563eb 100%);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            padding: 0.5rem 1rem;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+        }
+        .stButton > button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 12px rgba(59, 130, 246, 0.4);
+        }
+
+        /* Form Submit Buttons */
+        .stFormSubmitButton > button {
+            background: linear-gradient(90deg, #10b981 0%, #059669 100%);
+            width: 100%;
+        }
+
+        /* Input Fields */
+        .stTextInput > div > div > input, .stSelectbox > div > div > div {
+            background-color: #1e293b;
+            color: #f8fafc;
+            border: 1px solid #334155;
+            border-radius: 6px;
+        }
+
+        /* Tabs */
+        .stTabs [data-baseweb="tab-list"] {
+            gap: 10px;
+        }
+        .stTabs [data-baseweb="tab"] {
+            background-color: #1e293b;
+            border-radius: 8px 8px 0 0;
+            border: 1px solid #334155;
+            padding: 10px 20px;
+            color: #94a3b8;
+        }
+        .stTabs [aria-selected="true"] {
+            background-color: #3b82f6 !important;
+            color: white !important;
+        }
+
+        /* Hide Streamlit Default Menus (For production look) */
+        #MainMenu {visibility: hidden;}
+        footer {visibility: hidden;}
+        header {visibility: hidden;}
+        </style>
+    """, unsafe_allow_html=True)
+
+# Apply the CSS
+local_css()
 
 @st.cache_resource
 def bootstrap():
