@@ -14,127 +14,87 @@ def _handle_reserve_callback(student_id, book_id):
     else:
         st.session_state["toast_msg"] = msg
         st.session_state["toast_icon"] = "⚠️"
-
 def render():
-    st.title("🔎 Student Book Search")
-    st.caption("Search. Locate. Read.")
+    # Inject custom CSS for the frontend look
+    st.markdown("""
+        <style>
+        .hero-banner {
+            background: linear-gradient(90deg, #1e3a8a 0%, #3b82f6 100%);
+            padding: 40px;
+            border-radius: 12px;
+            text-align: center;
+            color: white;
+            margin-bottom: 30px;
+            box-shadow: 0 10px 25px rgba(59, 130, 246, 0.3);
+        }
+        .hero-banner h1 {
+            font-size: 3rem;
+            margin-bottom: 10px;
+            color: white !important;
+        }
+        .hero-banner p {
+            font-size: 1.2rem;
+            opacity: 0.9;
+        }
+        .section-title {
+            font-size: 1.8rem;
+            color: #38bdf8;
+            margin-top: 30px;
+            margin-bottom: 20px;
+            border-bottom: 2px solid #334155;
+            padding-bottom: 10px;
+        }
+        </style>
+    """, unsafe_allow_html=True)
 
+    # --- HERO BANNER ---
+    if "searched" not in st.session_state:
+        st.markdown("""
+            <div class="hero-banner">
+                <h1>📚 Welcome to LibFind</h1>
+                <p>Discover, Reserve, and Read. Your entire college library, now in your pocket.</p>
+            </div>
+        """, unsafe_allow_html=True)
 
-    if "toast_msg" in st.session_state:
-        st.toast(st.session_state["toast_msg"], icon=st.session_state["toast_icon"])
-        del st.session_state["toast_msg"]
-        del st.session_state["toast_icon"]
-
+    # Search Form (keep your existing form code here)
     categories = ["All"] + db.category_names()
-
     with st.form("student_search_form"):
         col1, col2 = st.columns([3, 1])
-        query = col1.text_input(
-            "Search text",
-            placeholder="e.g. Python, Clean Code, 9780132350884, Mathematics",
-        )
+        query = col1.text_input("Search text", placeholder="Search by title, author, or ISBN...")
         category = col2.selectbox("Category filter", categories)
-
-        field = st.radio(
-            "Search in",
-            ["Everywhere", "Title", "Author", "ISBN", "Category"],
-            horizontal=True,
-        )
-
-        col3, col4 = st.columns(2)
-        availability = col3.selectbox(
-            "Availability",
-            ["Any availability", "Available only", "Checked out"],
-        )
-        year = col4.number_input(
-            "Publication year (0 = any)",
-            min_value=0, max_value=2100, value=0, step=1,
-        )
-
-        submitted = st.form_submit_button(
-            "🔍 Search books",
-            use_container_width=True,
-        )
-
-    if not submitted:
-        st.info("Enter a book title, author, ISBN, or category to begin.")
-        return
-
-    search_field = "all" if field == "Everywhere" else field.lower()
-    cat = None if category == "All" else category
-
-    if not query.strip() and cat is None:
-        st.warning("Type something or choose a category.")
-        return
-
-    results = search.search_books(query, field=search_field, category=cat)
-    total_matches = len(results)
-
-    # ---- extra filters ----
-    if availability == "Available only":
-        results = [b for b in results if int(b.get("available_copies") or 0) > 0]
-    elif availability == "Checked out":
-        results = [b for b in results if int(b.get("available_copies") or 0) <= 0]
-
-    if year:
-        results = [
-            b for b in results
-            if str(b.get("publication_year") or "") == str(year)
-        ]
-
-    st.subheader(f"Results — {len(results)} book(s) found")
-        # Show any success/error message from the reserve button
-    if "res_msg" in st.session_state:
-        st.success(st.session_state["res_msg"])
-        del st.session_state["res_msg"] # Clear it so it doesn't show forever
-        # Show any success/error message from the callback
         
-    st.subheader(f"Results — {len(results)} book(s) found")
-    if not results:
-        if total_matches:
-            st.warning(
-                f"{total_matches} match(es) found, but none match your "
-                "availability / year filters. Loosen them and search again."
-            )
-            return
+        # ... rest of your search form inputs (Search in, Availability, Year) ...
+        field = st.radio("Search in", ["Everywhere", "Title", "Author", "ISBN", "Category"], horizontal=True)
+        col3, col4 = st.columns(2)
+        availability = col3.selectbox("Availability", ["Any availability", "Available only", "Checked out"])
+        year = col4.number_input("Publication year (0 = any)", min_value=0, max_value=2100, value=0, step=1)
+        
+        submitted = st.form_submit_button("🔍 Search books", use_container_width=True)
 
-        st.warning("No exact / partial match found in the catalogue.")
-
-        suggestions = search.fuzzy_title_suggestions(
-            query,
-            category=cat,
-            limit=5,
-        )
-
-        if suggestions:
-            st.success("Did you mean one of these titles?")
-            for i, book in enumerate(suggestions):
-                _book_card(book, index=f"fuzzy_{i}")
-        else:
-            st.info(
-                "No close title match either. Try fewer keywords, "
-                "check spelling, or search without a category filter."
-            )
+    # If user hasn't searched, show the beautiful Top Books grid
+    if not submitted and not query.strip():
+        st.markdown('<div class="section-title">🔥 Trending Books</div>', unsafe_allow_html=True)
+        
+        # Fetch top 3 books from the database
+        books = db.get_all_books()[:3]  # For demo, just grab the first 3
+        
+        cols = st.columns(3)
+        for i, book in enumerate(books):
+            with cols[i]:
+                with st.container(border=True):
+                    if book.get("cover_image"):
+                        st.image(book["cover_image"], use_column_width=True)
+                    else:
+                        st.info("📚 No Cover")
+                    st.subheader(book["title"])
+                    st.caption(f"by {book['author']}")
+                    if book["available_copies"] > 0:
+                        st.success(f"✅ {book['available_copies']} copies available")
+                    else:
+                        st.error("❌ Checked out")
         return
 
-    for i, book in enumerate(results[:50]):
-        _book_card(book, index=i)
-
-    # Similar-book suggestions using the result set.
-    st.markdown("---")
-    st.subheader("💡 Similar books you may also like")
-
-    seen = {book["id"] for book in results}
-    shown = False
-
-    for i, book in enumerate(results[:5]):
-        for j, similar in enumerate(recommend.similar_books(book["id"], limit=2)):
-            if similar["id"] not in seen:
-                _book_card(similar, index=f"sim_{i}_{j}")
-                seen.add(similar["id"])
-                shown = True
-    if not shown:
-        st.caption("No additional similar titles available right now.")
+    # ... [Keep your existing search logic for displaying results here] ...
 
 
 def _book_card(book, index=0):
