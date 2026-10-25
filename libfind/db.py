@@ -954,6 +954,9 @@ def bulk_import_students(student_list, default_password=None):
     import os
     import binascii
     from contextlib import closing
+    from libfind.auth import ensure_auth_schema 
+
+    ensure_auth_schema()  
 
     added = 0
     errors = []
