@@ -28,7 +28,7 @@ def main():
     
     pages = ["🔎 Student Search", "📊 Library Analytics", "Book Borrowing", "🛠 Admin Interface"]
     if is_admin:
-        pages = ["📊 Dashboard"] + pages
+        pages = ["📊 Dashboard", "📷 Quick Scan"] + pages 
         st.sidebar.success("👑 Logged in as Admin")
         if st.sidebar.button("Logout", use_container_width=True):
             st.session_state.admin_logged_in = False
@@ -55,6 +55,9 @@ def main():
     if page == "📊 Dashboard":
         from ui.dashboard import render as dash_render
         dash_render()
+    elif page == "📷 Quick Scan":
+        from ui.scanner import render as scan_render # <--- ADD THIS
+        scan_render()
     elif page == "🔎 Student Search":
         from ui.student import render as student_render
         student_render()
