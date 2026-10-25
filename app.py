@@ -85,7 +85,7 @@ def local_css():
     /* Hide Streamlit Default Menus (For production look) */
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
-    header {visibility: hidden;}
+    header {background-color: transparent !important;}
     </style>
     """
     # THIS IS THE MOST IMPORTANT LINE. MAKE SURE IT SAYS unsafe_allow_html=True
