@@ -944,3 +944,60 @@ def get_admin_dashboard_stats():
         "reservations": reservations,
         "students": students
     }
+
+def bulk_import_students(student_list, default_password=None):
+    """
+    Import a list of students. 
+    student_list format: [{'name': '...', 'email': '...', 'roll_number': '...'}]
+    """
+    import hashlib
+    import os
+    import binascii
+    from contextlib import closing
+
+    added = 0
+    errors = []
+
+    with closing(get_connection()) as conn:
+        for i, s in enumerate(student_list):
+            name = (s.get("name") or "").strip()
+            email = (s.get("email") or "").strip().lower()
+            roll = (s.get("roll_number") or "").strip().upper()
+            
+            # Password defaults to their Roll Number if not provided
+            password = s.get("password") or default_password or roll
+
+            if not name or not email or not roll:
+                errors.append(f"Row {i+1}: Missing name, email, or roll number")
+                continue
+
+            # Check if student already exists
+            existing = conn.execute(
+                "SELECT id FROM students WHERE roll_number = ? OR email = ?",
+                (roll, email)
+            ).fetchone()
+            
+            if existing:
+                errors.append(f"Row {i+1}: Student {roll} or {email} already exists")
+                continue
+
+            # Hash the password
+            salt = os.urandom(16)
+            dk = hashlib.pbkdf2_hmac("sha256", password.encode(), salt, 100_000)
+            salt_hex = binascii.hexlify(salt).decode()
+            hash_hex = binascii.hexlify(dk).decode()
+
+            try:
+                conn.execute(
+                    """INSERT INTO students 
+                       (name, email, roll_number, password_salt, password_hash) 
+                       VALUES (?, ?, ?, ?, ?)""",
+                    (name, email, roll, salt_hex, hash_hex)
+                )
+                added += 1
+            except Exception as exc:
+                errors.append(f"Row {i+1}: DB Error - {str(exc)}")
+                
+        conn.commit()
+
+    return added, errors

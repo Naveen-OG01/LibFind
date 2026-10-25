@@ -46,7 +46,6 @@ def _admin_screen():
         st.session_state.admin_tab = "➕ Add Book"
 
     # If URL params exist, update the session state
-       # If URL params exist, update the session state
     if "tab" in st.query_params:
         tab_map = {
             "add": "➕ Add Book",
@@ -54,6 +53,7 @@ def _admin_screen():
             "cat": "🏷️ Categories",
             "bulk": "📄 Bulk Import",
             "students": "👥 Students",
+            "bulk_students": "🎓 Bulk Students",
             "notify": "✉️ Notifications",
             "log": "📋 Activity Log"
         }
@@ -64,19 +64,20 @@ def _admin_screen():
         # Clean up the URL immediately
         del st.query_params["tab"] 
 
-    # The main navigation for admin
     tabs = [
         "➕ Add Book",
         "✏️ Edit / Delete Book",
         "🏷️ Categories",
         "📄 Bulk Import",
         "👥 Students",
+        "🎓 Bulk Students",
         "✉️ Notifications",
         "📋 Activity Log"
     ]
     
-    active_tab = st.radio("Select Action", tabs, key="admin_tab", horizontal=True, label_visibility="collapsed")
-    st.divider()
+    # Put the radio in the sidebar so it doesn't squish
+    st.sidebar.divider()
+    active_tab = st.sidebar.radio("Admin Menu", tabs, key="admin_tab")
 
     if active_tab == "➕ Add Book":
         _add_book_tab()
@@ -88,6 +89,8 @@ def _admin_screen():
         _bulk_import_tab()
     elif active_tab == "👥 Students":
         _students_tab()
+    elif active_tab == "🎓 Bulk Students":
+        _bulk_students_tab()
     elif active_tab == "✉️ Notifications":
         _notifications_tab()
     elif active_tab == "📋 Activity Log":
@@ -422,3 +425,58 @@ def _activity_tab():
         use_container_width=True,
         hide_index=True,
     )
+
+def _bulk_students_tab():
+    st.subheader("🎓 Bulk Import Students")
+    st.caption("Upload a CSV file to register multiple students at once.")
+    
+    st.info("""
+    **CSV Format Required:**
+    `name`, `email`, `roll_number` (Only these three are mandatory)
+    **Note:** The default password for all imported students will be their **Roll Number**.
+    """)
+
+    # Sample download
+    sample_csv = "name,email,roll_number\nRahul Sharma,rahul@college.edu,21CS001\nPriya Patel,priya@college.edu,21CS002"
+    st.download_button(
+        label="⬇️ Download Sample CSV",
+        data=sample_csv,
+        file_name="sample_students.csv",
+        mime="text/csv"
+    )
+
+    uploaded = st.file_uploader("Choose a CSV file", type=["csv"], key="bulk_students_csv")
+    
+    if uploaded is None:
+        return
+
+    try:
+        text = uploaded.getvalue().decode("utf-8-sig")
+    except UnicodeDecodeError:
+        st.error("Could not read the file — save it as UTF-8 CSV and try again.")
+        return
+
+    reader = csv.DictReader(io.StringIO(text))
+    fields = {(name or "").strip().lower() for name in (reader.fieldnames or [])}
+    
+    if not {"name", "email", "roll_number"}.issubset(fields):
+        st.error("CSV must contain 'name', 'email', and 'roll_number' columns.")
+        return
+
+    if st.button("📥 Import Students", type="primary", key="bulk_import_students_btn"):
+        students_to_add = []
+        for raw in reader:
+            row = {(k or "").strip().lower(): (v or "").strip() for k, v in raw.items() if k is not None}
+            if not row.get("roll_number"):
+                continue
+            students_to_add.append(row)
+
+        with st.spinner(f"Importing {len(students_to_add)} students..."):
+            added, errors = db.bulk_import_students(students_to_add)
+            
+        st.success(f"✅ Successfully imported {added} students!")
+        
+        if errors:
+            st.warning(f"{len(errors)} student(s) skipped:")
+            for err in errors[:10]:
+                st.write(f"- {err}")
