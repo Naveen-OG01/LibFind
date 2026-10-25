@@ -28,7 +28,7 @@ def main():
     
     pages = ["🔎 Student Search", "📊 Library Analytics", "Book Borrowing", "🛠 Admin Interface"]
     if is_admin:
-        pages = ["📊 Dashboard", "📷 Quick Scan"] + pages 
+        pages = ["📊 Dashboard", "📷 Quick Scan", "🔎 Student Search", "📊 Library Analytics", "Book Borrowing", "🛠 Admin Interface"]
         st.sidebar.success("👑 Logged in as Admin")
         if st.sidebar.button("Logout", use_container_width=True):
             st.session_state.admin_logged_in = False
