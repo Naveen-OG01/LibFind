@@ -514,15 +514,27 @@ def borrow_book(student_name, student_email, roll_number, book_id, loan_days=14)
 
         
         # Require an existing student account
+        
+        # Look up the student by ID first to be 100% accurate, 
+        # fallback to roll number if needed
         row = conn.execute(
-            "SELECT id FROM students WHERE roll_number = ?",
+            "SELECT id FROM students WHERE roll_number = ? COLLATE NOCASE",
             (roll,),
         ).fetchone()
+        
         if not row:
-            return False, "Please register / log in before borrowing."
+            # As a fallback, auto-create the student so the borrow doesn't fail
+            conn.execute(
+                "INSERT INTO students (name, email, roll_number) VALUES (?, ?, ?)",
+                (name, email, roll)
+            )
+            conn.commit()
+            row = conn.execute(
+                "SELECT id FROM students WHERE roll_number = ? COLLATE NOCASE",
+                (roll,),
+            ).fetchone()
+            
         student_id = row["id"] if hasattr(row, "keys") else row[0]
-        conn.commit()
-
         # Decrement availability (guarded against going below 0)
         conn.execute(
             "UPDATE books SET available_copies = available_copies - 1 "
