@@ -5,6 +5,9 @@ from typing import List, Optional
 from libfind import db, auth
 import os
 import streamlit as st
+from fastapi import FastAPI, HTTPException, UploadFile, File
+import csv
+import io
 
 # Bridge Render Environment Variables to Streamlit Secrets for the DB to work
 os.environ["TURSO_DATABASE_URL"] = os.environ.get("TURSO_DATABASE_URL", "")
@@ -284,3 +287,75 @@ def send_emails():
     # Mocking the email send for the API. 
     # In a real app, you would loop through reminders and call emailer.send_reminder_email
     return {"message": "Emails sent successfully to all overdue students!"}
+
+
+
+@app.post("/api/admin/bulk-import-books")
+async def bulk_import_books(file: UploadFile = File(...)):
+    """Receive a CSV file and import books."""
+    try:
+        contents = await file.read()
+        text = contents.decode("utf-8-sig")
+        reader = csv.DictReader(io.StringIO(text))
+        
+        added = 0
+        errors = []
+        from libfind import db
+        
+        for i, row in enumerate(reader):
+            try:
+                db.add_book(
+                    title=row.get("title", "").strip(),
+                    author=row.get("author", "").strip(),
+                    isbn=row.get("isbn", "").strip() or None,
+                    category_name=row.get("category", "General").strip(),
+                    publisher=row.get("publisher", "").strip(),
+                    publication_year=int(row["year"]) if row.get("year") else None,
+                    total_copies=int(row.get("total_copies", 1)),
+                    shelf=row.get("shelf", "").strip(),
+                    rack=row.get("rack", "").strip(),
+                )
+                added += 1
+            except Exception as e:
+                errors.append(f"Row {i+2}: {str(e)}")
+                
+        return {"message": f"Successfully imported {added} books!", "errors": errors}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+class BookCreate(BaseModel):
+    title: str
+    author: str
+    isbn: Optional[str] = None
+    category: str = "General"
+    total_copies: int = 1
+
+@app.get("/api/admin/books")
+def get_admin_books():
+    from libfind import db
+    return db.get_all_books()
+
+@app.post("/api/admin/books")
+def add_admin_book(book: BookCreate):
+    from libfind import db
+    try:
+        db.add_book(
+            title=book.title,
+            author=book.author,
+            isbn=book.isbn,
+            category_name=book.category,
+            total_copies=book.total_copies,
+            available_copies=book.total_copies
+        )
+        return {"message": "Book added successfully!"}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.delete("/api/admin/books/{book_id}")
+def delete_admin_book(book_id: int):
+    from libfind import db
+    try:
+        db.delete_book(book_id)
+        return {"message": "Book deleted successfully!"}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
