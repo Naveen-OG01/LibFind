@@ -225,3 +225,17 @@ def lookup_student(roll_number: str):
     if not student:
         raise HTTPException(status_code=404, detail="Student not found")
     return student
+
+@app.get("/api/debug")
+def debug_db():
+    import traceback
+    from libfind import db
+    try:
+        # Try to connect directly to Turso
+        conn = db.get_connection()
+        # Run a simple query
+        res = conn.execute("SELECT COUNT(*) FROM books").fetchone()[0]
+        return {"status": "success", "books_count": res}
+    except Exception as e:
+        return {"status": "error", "message": str(e), "traceback": traceback.format_exc()}
+    
