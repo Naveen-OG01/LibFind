@@ -3,6 +3,20 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Optional
 from libfind import db, auth
+import os
+import streamlit as st
+
+# Bridge Render Environment Variables to Streamlit Secrets for the DB to work
+os.environ["TURSO_DATABASE_URL"] = os.environ.get("TURSO_DATABASE_URL", "")
+os.environ["TURSO_AUTH_TOKEN"] = os.environ.get("TURSO_AUTH_TOKEN", "")
+
+# Manually set Streamlit secrets (since we aren't running Streamlit UI)
+try:
+    st.secrets["TURSO_DATABASE_URL"] = os.environ["TURSO_DATABASE_URL"]
+    st.secrets["TURSO_AUTH_TOKEN"] = os.environ["TURSO_AUTH_TOKEN"]
+except Exception:
+    pass
+
 
 app = FastAPI(title="LibFind API", description="Backend API for the LibFind Library System")
 
