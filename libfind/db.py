@@ -437,9 +437,18 @@ def update_book(book_id, category_name=None, **fields):
 
 
 def delete_book(book_id):
+    """Force delete a book and its borrow history (Admin only)."""
     with closing(get_connection()) as conn:
-        conn.execute("DELETE FROM books WHERE id = ?", (book_id,))
-        conn.commit()
+        try:
+            # Delete borrow records first to avoid foreign key errors
+            conn.execute("DELETE FROM borrows WHERE book_id = ?", (book_id,))
+            # Delete reservations
+            conn.execute("DELETE FROM reservations WHERE book_id = ?", (book_id,))
+            # Delete the book
+            conn.execute("DELETE FROM books WHERE id = ?", (book_id,))
+            conn.commit()
+        except Exception as e:
+            print(f"Delete failed: {e}")
 
 def update_book_cover(book_id, cover_url):
     with closing(get_connection()) as conn:
