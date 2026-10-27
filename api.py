@@ -23,8 +23,8 @@ app = FastAPI(title="LibFind API", description="Backend API for the LibFind Libr
 # Allow your future React website to communicate with this API
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://libfind-frontend-kwou.vercel.app"], # Your Vercel URL
-    allow_credentials=True,
+    allow_origins=["*"], # Allow everything since it's a college project
+    allow_credentials=False, # MUST be false when origins is "*"
     allow_methods=["*"],
     allow_headers=["*"],
 )

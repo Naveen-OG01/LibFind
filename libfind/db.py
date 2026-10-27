@@ -199,24 +199,40 @@ class _TursoConnection:
 
 def get_connection():
     import os
-    try:
-        return _TursoConnection(
-            libsql.connect(
-                database=st.secrets["TURSO_DATABASE_URL"],
-                auth_token=st.secrets["TURSO_AUTH_TOKEN"],
-            )
-        )
-    except Exception as exc:
-        # Fallback to /tmp for Render
-        if os.environ.get("RENDER"):
-            db_path = Path("/tmp/libfind.db")
-        else:
-            db_path = DB_PATH
-        db_path.parent.mkdir(parents=True, exist_ok=True)
-        conn = sqlite3.connect(str(db_path))
-        conn.row_factory = sqlite3.Row
-        return conn
+    from pathlib import Path
     
+    # 1. Try to get Turso credentials from Environment Variables (Render) or Streamlit Secrets
+    turso_url = os.environ.get("TURSO_DATABASE_URL")
+    turso_token = os.environ.get("TURSO_AUTH_TOKEN")
+
+    if not turso_url:
+        try:
+            turso_url = st.secrets.get("TURSO_DATABASE_URL")
+            turso_token = st.secrets.get("TURSO_AUTH_TOKEN")
+        except Exception:
+            pass
+
+    # 2. If we have credentials, connect to Turso
+    if turso_url and turso_token:
+        try:
+            return _TursoConnection(
+                libsql.connect(database=turso_url, auth_token=turso_token)
+            )
+        except Exception as e:
+            print(f"Turso connection failed: {e}")
+
+    # 3. Fallback to local SQLite (or /tmp for Render)
+    if os.environ.get("RENDER"):
+        db_path = Path("/tmp/libfind.db")
+    else:
+        db_path = DB_PATH
+
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(str(db_path))
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys = ON")
+    return conn
+
 
 def init_db():
     DATA_DIR.mkdir(parents=True, exist_ok=True)
