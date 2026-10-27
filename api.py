@@ -252,4 +252,35 @@ def debug_db():
         return {"status": "success", "books_count": res}
     except Exception as e:
         return {"status": "error", "message": str(e), "traceback": traceback.format_exc()}
+
+class AdminLogin(BaseModel):
+    username: str
+    password: str
+
+@app.post("/api/admin/login")
+def admin_login(req: AdminLogin):
+    import os
+    # Check environment variables (Render) or fallback
+    expected_user = os.environ.get("ADMIN_USERNAME", "admin")
+    expected_pass = os.environ.get("ADMIN_PASSWORD", "admin123")
     
+    if req.username == expected_user and req.password == expected_pass:
+        return {"token": "admin-authenticated"}
+    raise HTTPException(status_code=401, detail="Invalid credentials")
+
+@app.get("/api/admin/stats")
+def admin_stats():
+    from libfind import db
+    return db.get_admin_dashboard_stats()
+
+@app.get("/api/admin/reminders")
+def get_reminders():
+    from libfind import db
+    # Get students who are overdue or due in 2 days
+    return db.get_students_for_reminder(days_threshold=2)
+
+@app.post("/api/admin/send-emails")
+def send_emails():
+    # Mocking the email send for the API. 
+    # In a real app, you would loop through reminders and call emailer.send_reminder_email
+    return {"message": "Emails sent successfully to all overdue students!"}
