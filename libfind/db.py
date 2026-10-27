@@ -198,6 +198,7 @@ class _TursoConnection:
 
 
 def get_connection():
+    import os
     try:
         return _TursoConnection(
             libsql.connect(
@@ -205,13 +206,18 @@ def get_connection():
                 auth_token=st.secrets["TURSO_AUTH_TOKEN"],
             )
         )
-    except (FileNotFoundError, KeyError):
-        # Fallback for local dev without Turso secrets
-        conn = sqlite3.connect(str(DB_PATH))
+    except Exception:
+        # Use /tmp for cloud deployments to avoid read-only file system errors
+        if os.environ.get("RENDER"):
+            db_path = Path("/tmp/libfind.db")
+        else:
+            db_path = DB_PATH
+            
+        db_path.parent.mkdir(parents=True, exist_ok=True)
+        conn = sqlite3.connect(str(db_path))
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA foreign_keys = ON")
         return conn
-
 
 def init_db():
     DATA_DIR.mkdir(parents=True, exist_ok=True)
