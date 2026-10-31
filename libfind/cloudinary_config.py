@@ -1,11 +1,24 @@
+import os
+
 import streamlit as st
 import cloudinary
 import cloudinary.uploader
 
 
+def _setting(key):
+    value = os.environ.get(key)
+    if value:
+        return value
+    try:
+        return st.secrets.get(key)
+    except Exception:
+        return None
+
+
 def _configure_cloudinary():
     required = ["CLOUD_NAME", "API_KEY", "API_SECRET"]
-    missing = [key for key in required if not st.secrets.get(key)]
+    settings = {key: _setting(key) for key in required}
+    missing = [key for key, value in settings.items() if not value]
 
     if missing:
         st.warning(
@@ -15,9 +28,9 @@ def _configure_cloudinary():
         return False
 
     cloudinary.config(
-        cloud_name=st.secrets["CLOUD_NAME"],
-        api_key=st.secrets["API_KEY"],
-        api_secret=st.secrets["API_SECRET"],
+        cloud_name=settings["CLOUD_NAME"],
+        api_key=settings["API_KEY"],
+        api_secret=settings["API_SECRET"],
         secure=True,
     )
     return True

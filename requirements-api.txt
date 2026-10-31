@@ -4,3 +4,6 @@ pydantic
 streamlit
 libsql
 python-dotenv
+python-multipart
+rapidfuzz
+cloudinary
